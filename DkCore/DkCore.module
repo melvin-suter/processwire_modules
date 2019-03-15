@@ -1,0 +1,34 @@
+<?php namespace ProcessWire;
+
+class DkCore extends WireData implements Module,ConfigurableModule {
+
+	static protected $defaults = [];
+
+	public static function getModuleInfo() {
+		return array(
+			'title' => 'DkCore', 
+			'version' => 1, 
+			'summary' => 'DK - Core Module (loads other modules)',
+			'configurable' => true,
+			'href' => '',
+			'singular' => true, 
+			'autoload' => true, 
+			'icon' => 'kiwi-bird', 
+            'installs' => array("DkTemplate", "InputfieldDKEditor",'DkConfig'),
+        );
+	}
+	public function __construct() {
+	  $this->setArray(self::$defaults);
+		// Save Default Config
+	}
+
+	public function init() {
+		//$this->addHookAfter('Page::render', $this, 'pageRender'); 
+	}
+
+	public static function getModuleConfigInputfields(){
+		return new InputfieldWrapper;
+	}
+
+
+}

@@ -1,0 +1,125 @@
+<?php namespace ProcessWire;
+
+class DkConfig extends Process {
+
+	static protected $defaults = [
+        'Global' => [
+            'project-title' => 'PAGENAME',
+        ],
+        'DkTemplate' => [
+            'js' => [
+                'files' => ['scripts/source/main.js'],
+                'outputPath' => 'scripts/cache/',
+                'customPath' => 'scripts/templates/',
+                'customTemplates' => [],
+            ],
+            'sass' => [
+                'files' => ['styles/sass/main.scss'],
+                'outputPath' => 'styles/cache/',
+                'customPath' => 'styles/templates/',
+                'customTemplates' => [],
+            ],
+            'meta' => [
+                'viewport' => 'width=device-width, initial-scale=1',
+            ],
+            'login' => [
+                'lockedTemplates' => [],
+                'loginTemplate' => 'include/login.php',
+            ],
+            'template' => [
+                'title' => '{{project-name}} - {{page-name}}',
+                'checkEveryVisit' => true,
+                'hash' => '',
+                'cachePath' => 'include/cache/',
+                'customHead' => '',
+                'customFoot' => '',
+            ],
+        ],
+    ];
+
+	public static function getModuleInfo() {
+		return array(
+			'title' => 'DkConfig', 
+			'version' => 1, 
+			'summary' => 'DK - Config Page',
+			'icon' => 'kiwi-bird', 
+			'requires' => ['DkCore','InputfieldDKEditor'],
+			'page' => [
+                'name' => 'dk-config',
+                'title' => 'DK Config',
+                'icon' => 'cogs',
+            ], 
+        );
+	}
+	public function __construct() {
+        $this->setArray(self::$defaults);
+        $this->checkConfig();
+    }
+
+	public function init() {
+        // Add Hooks
+		$this->addHookBefore('Page::render', $this, 'pageRender'); 
+	}	
+    
+    // Sets Default Config
+    public function checkConfig() {
+        $config = $this->modules->getConfig('DkCore');
+		$config = is_array($config) ? $config : [];
+		$config = array_merge(self::$defaults,$config);
+		$this->modules->saveConfig('DkCore',$config);
+    }
+
+    public function ___execute() {
+        $config = $this->modules->getConfig('DkCore');
+
+		// Create Page and Form
+        $page = $this->modules->get('InputfieldFieldset');
+		$form = $this->modules->get('InputfieldForm');
+        $form->action = './save';
+        
+        // Add Text Field
+		$inputField = $this->modules->get('InputfieldDKEditor');
+		$inputField->label = "Config-YAML";
+		$inputField->name = "config";
+		$inputField->value = yaml_emit($config);
+		$form->add($inputField);
+
+		// Add Save Button
+		$button = $this->modules->get('InputfieldSubmit');
+		$button->value = 'Save';
+		$button->icon = 'floppy-o';
+		$form->add($button);
+
+		// Add Form to Page and render
+		$page->add($form);
+		return $page->render();
+    }
+
+    public function ___executeSave() {
+        // Throws Exception if it isn't a submited form
+		if(!$this->input->post('submit')) throw new Wire404Exception();
+
+		// Get Config
+		$config = $this->modules->getConfig('DkCore');
+
+		// Set Config from Input
+        $config = yaml_parse($this->input->post('config'));
+        
+		// Try to save settings
+		if($this->modules->saveConfig('DkCore',$config))
+			$this->message('Saved');
+		else
+			$this->message('Error While Saving!');
+
+		// redirect to the previous page
+		$this->session->redirect('./');
+    }
+
+    // Defines DK_Config Constant on Page Render
+    public function pageRender() {
+        $config = $this->modules->getConfig('DkCore');
+        define('DK_Config',$config);
+    }
+
+
+}

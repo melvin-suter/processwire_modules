@@ -1,0 +1,528 @@
+<?php namespace ProcessWire;
+
+class DkTemplate extends Process {
+
+	/********* 
+	 * Settings
+	 *********/
+	static protected $defaults = [];
+
+	public static function getModuleInfo() {
+
+		return array(
+			'title' => 'DkTemplate', 
+			'version' => 1, 
+			'summary' => 'DK - Template Management',
+			'singular' => true, 
+			'icon' => 'kiwi-bird', 
+			'autoload' => true, 
+			'requires' => ['DkCore'],
+			'page' => [
+        'name' => 'dk-template',
+				'title' => 'DK Template',
+				'icon' => 'file',
+      ], 
+		);
+	}
+
+	 /********* 
+	 * Init & Constr
+	 *********/
+	public function __construct() {
+		$this->setArray(self::$defaults);
+	}
+
+	public function init() {
+		$this->addHookAfter('Page::render', $this, 'pageRender'); 
+
+		// Save Default Config
+		$this->modules->get('DkConfig')->checkConfig();
+	}	
+
+	/********* 
+	* Admin Page
+	*********/
+
+	public function ___execute() {
+		$this->config->scripts->add($this->config->urls->DkTemplate.'main.js');
+		$config = $this->modules->getConfig('DkCore');
+
+		// Create Page and Form
+		$page = $this->modules->get('InputfieldFieldset');
+		$form = $this->modules->get('InputfieldForm');
+		$form->action = './save';
+
+
+		// Start: Template
+		$markupField = $this->modules->get('InputfieldMarkup');
+		$markupField->value = "<h3>Templates</h3>";
+
+		$table = $this->modules->get('MarkupAdminDataTable');
+		$table->setEncodeEntities(false);
+		$table->headerRow(['Template', 'Login-Protected','Custom-SASS','Custom-JS']);
+		foreach($this->templates as $template) {
+			if(!in_array($template->id,[2,3,4,5]))
+				$table->row([
+					$template->name, 
+					'<input type="checkbox" name="login-templates[]" '.(in_array($template->id,$config['DkTemplate']['login']['lockedTemplates']) ? 'checked' : '').' value="'.$template->id.'"/>',
+					'<input type="checkbox" name="sass-templates[]" '.(in_array($template->id,$config['DkTemplate']['sass']['customTemplates']) ? 'checked' : '').' value="'.$template->id.'"/>',
+					'<input type="checkbox" name="js-templates[]" '.(in_array($template->id,$config['DkTemplate']['js']['customTemplates']) ? 'checked' : '').' value="'.$template->id.'"/>'
+					]);
+		}
+		$markupField->value .= $table->render();
+
+		$form->add($markupField);
+
+		// End: Template
+
+
+
+		// Start: Settings
+		$fieldset = $this->modules->get('InputfieldFieldset');
+		$fieldset->label = "Settings";
+		$fieldset->collapsed = true;
+
+		$markupField = $this->modules->get('InputfieldMarkup');
+
+		$markupField->value = "<h3>Settings</h3>";
+		
+		$inputField = $this->modules->get('InputfieldText');
+		$inputField->label = "Project Name";
+		$inputField->name = "project-title";
+		$inputField->value = $config['Global']['project-title'];
+		$fieldset->add($inputField);
+		
+		$inputField = $this->modules->get('InputfieldText');
+		$inputField->label = "Page Title";
+		$inputField->name = "pageTitle";
+		$inputField->value = $config['DkTemplate']['template']['title'];
+		$fieldset->add($inputField);
+		
+		$inputField = $this->modules->get('InputfieldText');
+		$inputField->label = "Cache Path";
+		$inputField->name = "cachePath";
+		$inputField->value = $config['DkTemplate']['template']['cachePath'];
+		$fieldset->add($inputField);
+		
+		$inputField = $this->modules->get('InputfieldText');
+		$inputField->label = "Login Template";
+		$inputField->name = "loginTemplate";
+		$inputField->value = $config['DkTemplate']['login']['loginTemplate'];
+		$fieldset->add($inputField);
+
+		$form->add($fieldset);
+		// End: Settings
+
+
+		// Start: Template
+		$fieldset = $this->modules->get('InputfieldFieldset');
+		$fieldset->label = "Template";
+		$fieldset->collapsed = true;
+
+		$inputField = $this->modules->get('InputfieldDKEditor');
+		$inputField->label = "Custom Head";
+		$inputField->name = "customHead";
+		$inputField->value = $config['DkTemplate']['template']['customHead'];
+		$fieldset->add($inputField);
+
+		$inputField = $this->modules->get('InputfieldDKEditor');
+		$inputField->label = "Custom Foot";
+		$inputField->name = "customFoot";
+		$inputField->value = $config['DkTemplate']['template']['customFoot'];
+		$fieldset->add($inputField);
+
+		$form->add($fieldset);
+		// End: Template
+
+
+
+		// Start: Meta
+		$fieldset = $this->modules->get('InputfieldFieldset');
+		$fieldset->label = 'Meta';
+		$fieldset->collapsed = true;
+
+		$markupField = $this->modules->get('InputfieldMarkup');
+		$markupField->value = "<h3>Attributes</h3>";
+
+		$table = $this->modules->get('MarkupAdminDataTable');
+		$table->setEncodeEntities(false);
+		$table->headerRow(['Name', 'Value','Actions']);
+		$table->id = "meta-table";
+		foreach($config['DkTemplate']['meta'] as $key => $value) {
+			$button = $this->modules->get('InputfieldButton');
+			$button->value = 'Delete';
+			$button->name = 'deleteRow';
+			$table->row([$key, '<input type="text" name="meta_'.$key.'" value="'.$value.'" style="width:100%;"/>',$button->render()]);
+		}
+		$button = $this->modules->get('InputfieldButton');
+		$button->value = 'Add';
+		$button->id = 'addRow';
+		$table->row(['<input type="text" id="metaNewKey" placeholder="New Key" style="width:100%;"/>', '<input type="text" id="metaNewValue" placeholder="New Value" style="width:100%;"/>',$button->render()]);
+
+		$markupField->value .= $table->render();
+		
+		$fieldset->add($markupField);
+		$form->add($fieldset);
+		// End: Meta
+
+
+
+		// Start: Styles
+		$fieldset = $this->modules->get('InputfieldFieldset');
+		$fieldset->label = "SASS";
+		$fieldset->collapsed = true;
+
+		$markupField = $this->modules->get('InputfieldMarkup');
+
+		$markupField->value = "<h3>Styles</h3>";
+		$inputField = $this->modules->get('InputfieldTextarea');
+		$inputField->label = "Links";
+		$inputField->name = "styles";
+		$inputField->value = implode('\n',$config['DkTemplate']['sass']['files']);
+		$markupField->value .= $inputField->render();
+		$fieldset->add($markupField);
+
+		$inputField = $this->modules->get('InputfieldText');
+		$inputField->label = "Output Path";
+		$inputField->name = "outputPath";
+		$inputField->value = $config['DkTemplate']['sass']['outputPath'];
+		$fieldset->add($inputField);
+
+		$inputField = $this->modules->get('InputfieldText');
+		$inputField->label = "Custom-Page Path";
+		$inputField->name = "customPath";
+		$inputField->value = $config['DkTemplate']['sass']['customPath'];
+		$fieldset->add($inputField);
+
+		$form->add($fieldset);
+		// End: Styles
+
+
+		// Start: Scripts
+		$fieldset = $this->modules->get('InputfieldFieldset');
+		$fieldset->label = "JS";
+		$fieldset->collapsed = true;
+
+		$markupField = $this->modules->get('InputfieldMarkup');
+
+		$markupField->value = "<h3>Scripts</h3>";
+		$inputField = $this->modules->get('InputfieldTextarea');
+		$inputField->label = "Links";
+		$inputField->name = "scripts";
+		$inputField->value = implode('\n',$config['DkTemplate']['js']['files']);
+		$markupField->value .= $inputField->render();
+		$fieldset->add($markupField);
+
+		$inputField = $this->modules->get('InputfieldText');
+		$inputField->label = "Output Path";
+		$inputField->name = "jsOutputPath";
+		$inputField->value = $config['DkTemplate']['js']['outputPath'];
+		$fieldset->add($inputField);
+
+		$inputField = $this->modules->get('InputfieldText');
+		$inputField->label = "Custom-Page Path";
+		$inputField->name = "jsCustomPath";
+		$inputField->value = $config['DkTemplate']['js']['customPath'];
+		$fieldset->add($inputField);
+
+		$form->add($fieldset);
+		// End: Scripts
+
+
+
+
+		// Add Save Button
+		$button = $this->modules->get('InputfieldSubmit');
+		$button->value = 'Save';
+		$button->icon = 'floppy-o';
+		$form->add($button);
+
+		// Add Save & Generate Button
+		$button = $this->modules->get('InputfieldSubmit');
+		$button->value = 'Save & Generate';
+		$button->name = 'action-generate';
+		$form->add($button);
+
+		// Add Form to Page and render
+		$page->add($form);
+
+
+
+
+
+		// Start: Tempalte-Generation & Output
+		$fieldset = $this->modules->get('InputfieldFieldset');
+		$fieldset->label = "Generation";
+		$fieldset->collapsed = true;
+
+		$inputField = $this->modules->get('InputfieldDKEditor');
+		$inputField->label = "Head";
+		$inputField->name = "head";
+		$inputField->value =  is_file($config['DkTemplate']['template']['cachePath'].$config['DkTemplate']['template']['hash'].'_head.php') ? (file_get_contents($config['DkTemplate']['template']['cachePath'].$config['DkTemplate']['template']['hash'].'_head.php')) : 'NO FILE';
+		$fieldset->add($inputField);
+
+		$inputField = $this->modules->get('InputfieldDKEditor');
+		$inputField->label = "Foot";
+		$inputField->name = "foot";
+		$inputField->value =  is_file($config['DkTemplate']['template']['cachePath'].$config['DkTemplate']['template']['hash'].'_foot.php') ? (file_get_contents($config['DkTemplate']['template']['cachePath'].$config['DkTemplate']['template']['hash'].'_foot.php')) : 'NO FILE';
+		$fieldset->add($inputField);
+
+		// Add Generate Button
+		$button = $this->modules->get('InputfieldButton');
+		$button->value = 'Generate';
+		$button->href = './generate';
+		$fieldset->add($button);
+
+
+		$page->add($fieldset);
+		// End: Tempalte-Generation & Output
+
+
+		return $page->render();
+	}
+	
+	
+	public function ___executeSave() 
+	{
+		// Throws Exception if it isn't a submited form
+		if(!$this->input->post('submit') && !$this->input->post('action-generate')) throw new Wire404Exception();
+
+		// Get Config
+		$config = $this->modules->getConfig('DkCore');
+
+		// Set Config from Input
+		$config['DkTemplate']['login']['lockedTemplates'] = is_array($this->input->post('login-templates')) ? $this->input->post('login-templates') : [];
+		$config['DkTemplate']['login']['loginTemplate'] = $this->input->post('loginTemplate');
+		$config['DkTemplate']['js']['files'] = explode("\\n",$this->input->post('scripts'));
+		$config['DkTemplate']['js']['customTemplates'] = is_array($this->input->post('js-templates')) ? $this->input->post('js-templates') : [];;
+		$config['DkTemplate']['js']['outputPath'] = $this->input->post('jsOutputPath');
+		$config['DkTemplate']['js']['customPath'] = $this->input->post('jsCustomPath');
+		$config['DkTemplate']['sass']['files'] = explode("\\n",$this->input->post('styles'));
+		$config['DkTemplate']['sass']['customTemplates'] = is_array($this->input->post('sass-templates')) ? $this->input->post('sass-templates') : [];;;
+		$config['DkTemplate']['sass']['outputPath'] = $this->input->post('outputPath');
+		$config['DkTemplate']['sass']['customPath'] = $this->input->post('customPath');
+		$config['DkTemplate']['template']['title'] = $this->input->post('pageTitle');
+		$config['DkTemplate']['template']['cachePath'] = $this->input->post('cachePath');
+		$config['DkTemplate']['template']['customHead'] = $this->input->post('customHead');
+		$config['DkTemplate']['template']['customFoot'] = $this->input->post('customFoot');
+		$config['Global']['project-title'] = $this->input->post('project-title');
+
+		$config['DkTemplate']['meta'] = [];
+		foreach($this->input->post() as $key => $value)
+		{
+			if(substr($key,0,5) == 'meta_')
+				$config['DkTemplate']['meta'][$key] = $value;
+		}
+
+		// Try to save settings
+		if($this->modules->saveConfig('DkCore',$config)){
+			$this->message('Saved');
+			if($this->input->post('action-generate') != false){
+				$this->generateTemplates();
+			}
+		}
+		else
+			$this->message('Error While Saving!');
+
+		// redirect to the previous page
+		$this->session->redirect('./');
+	}
+
+	// Generates Templates
+	public function ___executeGenerate() {
+		$this->generateTemplates();
+		$this->session->redirect('./');
+
+	}
+
+	/********* 
+	* Geeeration-Functions
+	*********/
+
+	// Generates Templates (Head & Foot) out of Config
+	public function generateTemplates() {
+		$config = $this->modules->getConfig('DkCore');
+		// Generate Hash
+		$hash = md5(json_encode($config));
+		$config['DkTemplate']['template']['hash'] = $hash;
+
+
+		// Try to save settings, if done, generate templates
+		if($this->modules->saveConfig('DkCore',$config))
+		{
+			/*** 
+			 * Compiling Files
+			 ***/
+			// SASS
+			$this->compileSASS();
+			$this->compileJS();
+
+			/*** 
+			 * Head
+			 ***/
+			// Login Check
+			$head = "<?php \n";
+			$head .= "// Login Check \n";
+			$head .= 'if(in_array($page->template->id,DK_Config[\'DkTemplate\'][\'login\'][\'lockedTemplates\'])) {'."\n";
+			$head .= "    wireIncludeFile(\$config->paths->templates.DK_Config['DkTempalte']['login']['loginTemplate']);\n";
+			$head .= "    exit;\n";
+			$head .= "} \n";
+			$head .= "?> \n";
+
+			// HTML
+			$head .= "<html>\n  <head>\n";
+			$head .= "    \n    <!-- Settings -->\n";
+						/* START Set Metatags */
+			foreach($config['DkTemplate']['meta'] as $key => $value) {
+				$head .= '    <meta name="'.$key.'" content="'.$value."\">\n";
+			}
+			// Default HTML Content Type
+			$head .= "    <meta http-equiv=\"content-type\" content=\"text/html; charset=utf-8\">\n";
+			/* END Set Metatags */
+
+			// Set Page Title
+			$generatedTitle = $config['DkTemplate']['template']['title'];
+			$generatedTitle = str_replace('{{project-name}}','<?=DK_Config[\'Global\'][\'project-title\'];?>',$generatedTitle);
+			$generatedTitle = str_replace('{{page-name}}','<?=$page->title;?>',$generatedTitle);
+			$head .= '    <title>'.$generatedTitle."</title>\n";
+
+			$head .= "    \n    <!-- Styles -->\n";
+			// Add Stylesheets
+			foreach($config['DkTemplate']['sass']['files'] as $sassFile){
+				$cssFilePath = '<?=$config->urls->templates;?>'. $config['DkTemplate']['sass']['outputPath'] . $config['DkTemplate']['template']['hash'].'_'.pathinfo($sassFile)['filename'].'.css';
+				$head .= "    <link rel=\"stylesheet\" href=\"$cssFilePath\"/>\n";
+			}
+			// Add Page-Stylesheet if exists
+			$cssFileUrl = '\'.$config->urls->templates.\''. $config['DkTemplate']['sass']['outputPath'] . $config['DkTemplate']['template']['hash'].'_\'.$page->template->name.\'.css';
+			$cssFilePath = '\'.$config->paths->templates.\''. $config['DkTemplate']['sass']['outputPath'] . $config['DkTemplate']['template']['hash'].'_\'.$page->template->name.\'.css';
+			$head .= "    <?= is_file('$cssFilePath') ? '<link rel=\"stylesheet\" href=\"$cssFileUrl\"/>' : '';?>\n";
+
+			$head .= "    \n    <!-- Scripts -->\n";
+			// Add JS
+			foreach($config['DkTemplate']['js']['files'] as $jsFile){
+				$jsFilePath = '<?=$config->urls->templates;?>'. $config['DkTemplate']['js']['outputPath'] . $config['DkTemplate']['template']['hash'].'_'.pathinfo($jsFile)['filename'].'.min.js';
+				$head .= "    <script src=\"$jsFilePath\"/></script>\n";
+			}
+
+			$head .= "  </head>\n  <body>\n";
+			$head .= '    '.implode("\n    ",explode("\n",$config['DkTemplate']['template']['customHead']));
+
+			/*** 
+			 * Foot
+			 ***/
+			$foot = '    '.implode("\n    ",explode("\n",$config['DkTemplate']['template']['customFoot']));
+			$foot .= "\n  </body>\n</html>";
+
+		
+				// Create Folder if not existing
+				if(!is_dir($this->config->paths->templates.$config['DkTemplate']['template']['cachePath']))
+					mkdir($this->config->paths->templates.$config['DkTemplate']['template']['cachePath'],0755,true);
+
+				// Delete all .php files in cache folder
+				$head_files = glob($this->config->paths->templates.$config['DkTemplate']['template']['cachePath'].'*_head.php'); // get all file names
+				$foot_files = glob($this->config->paths->templates.$config['DkTemplate']['template']['cachePath'].'*_foot.php'); // get all file names
+				foreach(array_merge($head_files,$foot_files) as $file){ // iterate files
+					if(is_file($file))
+						unlink($file); // delete file
+				}
+
+				// Write files
+				file_put_contents($this->config->paths->templates.$config['DkTemplate']['template']['cachePath'].$hash.'_head.php',$head);
+				file_put_contents($this->config->paths->templates.$config['DkTemplate']['template']['cachePath'].$hash.'_foot.php',$foot);
+
+				$this->message('Generated');
+		}
+		else {
+			$this->message('ERROR while saving Config.');
+		}
+	}
+
+	// Compile SASS
+	public function compileSASS() {
+		$config = $this->modules->getConfig('DkCore');
+
+		// Include scssphp & create Compiler
+		require __DIR__.'/vendor/scssphp/scss.inc.php';
+		$scss = new \Leafo\ScssPhp\Compiler();	
+		
+		// Create Folder if not existing
+		$path = $this->config->paths->templates.$config['DkTemplate']['sass']['outputPath'];
+		if(!is_dir($path))
+			mkdir($path,0755,true);
+
+		// Delete all .css files in cache folder
+		$css_files = glob($path.'*.css'); // get all file names
+		foreach($css_files as $file){ // iterate files
+			if(is_file($file))
+				unlink($file); // delete file
+		}
+
+		// Generate all Global SASS Files
+		foreach($config['DkTemplate']['sass']['files'] as $sassFile){
+			$sassPath = $this->config->paths->templates.$sassFile;
+			if(is_file($sassPath)) {
+				$sassContent = file_get_contents($sassPath);
+				file_put_contents($path.$config['DkTemplate']['template']['hash'].'_'.pathinfo($sassPath)['filename'].'.css',$scss->compile($sassContent));
+			}
+		}
+
+		// Generate all Page SASS Files
+		foreach($config['DkTemplate']['sass']['customTemplates'] as $templateID){
+			$templateName = $this->templates->get($templateID)->name;
+			$sassPath = $this->config->paths->templates.$config['DkTemplate']['sass']['customPath'].$templateName.'.scss';
+
+			if(is_file($sassPath)) {
+				$sassContent = file_get_contents($sassPath);
+				file_put_contents($path.$config['DkTemplate']['template']['hash'].'_'.pathinfo($sassPath)['filename'].'.css',$scss->compile($sassContent));
+			}
+		}
+	}
+
+	// Compile JS
+	public function compileJS() {
+		$config = $this->modules->getConfig('DkCore');
+
+		// Include scssphp & create Compiler
+		require __DIR__.'/vendor/JShrink/Minifier.php';
+		
+		// Create Folder if not existing
+		$path = $this->config->paths->templates.$config['DkTemplate']['js']['outputPath'];
+		if(!is_dir($path))
+			mkdir($path,0755,true);
+
+		// Delete all .css files in cache folder
+		$css_files = glob($path.'.min.js'); // get all file names
+		foreach($css_files as $file){ // iterate files
+			if(is_file($file))
+				unlink($file); // delete file
+		}
+
+		foreach($config['DkTemplate']['js']['files'] as $jsFile){
+			$jsPath = $this->config->paths->templates.$jsFile;
+			if(is_file($jsPath)) {
+				$minJsContent = \JShrink\Minifier::minify(file_get_contents($jsPath));
+				file_put_contents($path.$config['DkTemplate']['template']['hash'].'_'.pathinfo($jsPath)['filename'].'.min.js',$minJsContent);
+			}
+		}
+	}
+
+	/********* 
+	* Background-Functions
+	*********/
+
+	/* Add header to template */
+	public function pageRender($event = null) {
+		$config = $this->modules->getConfig('DkCore');
+		$tempaltePaths = $config['DkTemplate']['template']['cachePath'].$config['DkTemplate']['template']['hash'];
+
+		// Print Head & Foot template, if not admin
+		if($this->page->template != 'admin') {
+			$newReturn = $this->files->render($tempaltePaths.'_head.php',['page' => $this->page]);
+			$newReturn .= $event->return;
+			$newReturn .= $this->files->render($tempaltePaths.'_foot.php',['page' => $this->page]);
+			$event->return = $newReturn;
+		}
+	}
+
+
+}

@@ -1,0 +1,104 @@
+<?php namespace ProcessWire;
+
+class InputfieldDKEditor extends InputfieldTextarea {
+
+	/********* 
+	 * Settings
+	 *********/
+	static protected $defaults = [];
+	static $defaultTheme = 'dark';
+
+	public static function getModuleInfo() {
+		return array(
+			'title' => 'InputfieldDKEditor', 
+			'version' => 1, 
+			'summary' => 'DK - Monaco Editor',
+    );
+	}
+
+	/********* 
+	 * Init & Constr
+	 *********/
+	public function __construct() {
+	    $this->setArray(self::$defaults);
+	}
+
+	public function init() {
+		parent::init();
+  	}
+		
+	/********* 
+	 * Sys
+	 *********/
+
+	// Input-Field Rendering (admin side)
+	public function ___render() {
+		// Get Attributes
+		$attrs = $this->getAttributes();
+		unset($attrs['size'], $attrs['type']); 
+		if($this->hasFieldtype !== false) unset($attrs['maxlength']); 
+		
+		$out = '<textarea id="aceeditor-'.$this->name.'" '.$this->getAttributesString($attrs).'>'.htmlspecialchars($this->value, ENT_QUOTES, "UTF-8").'</textarea>';
+		$out .= '<div id="editor-'.$this->name.'" style="height: 100%;min-height: 300px;">'.htmlspecialchars($this->value, ENT_QUOTES, "UTF-8").'</div>';
+		$out .= '<script src="'.$this->config->urls->InputfieldDKEditor.'/ace.min.js" type="text/javascript" charset="utf-8"></script>';
+		$out .= '<script src="'.$this->config->urls->InputfieldDKEditor.'/theme.min.js" type="text/javascript" charset="utf-8"></script>';
+		$out .= '<script> 
+			if(window.editors == undefined)
+				window.editors = {};
+			if(window.textareas == undefined)
+				window.textareas = {};
+			window.editors["'.$this->name.'"] = ace.edit("editor-'.$this->name.'");
+			window.editors["'.$this->name.'"].setTheme("ace/theme/tomorrow_night");
+			window.textareas["'.$this->name.'"] = $(\'#aceeditor-'.$this->name.'\');
+			window.textareas["'.$this->name.'"].hide();
+			window.editors["'.$this->name.'"].getSession().setValue(window.textareas["'.$this->name.'"].val());
+			window.editors["'.$this->name.'"].getSession().on("change", function(){
+				console.log(window.editors["'.$this->name.'"].getSession().getValue());
+				window.textareas["'.$this->name.'"].val(window.editors["'.$this->name.'"].getSession().getValue());
+			});
+		</script>';
+		
+		return $out; 
+	}
+
+	// Define Config for this Input Field
+	public function ___getConfigInputfields() {
+		// Get Parent's input Fields
+		$inputfields = parent::___getConfigInputfields();
+
+		// Delete unused Default Fields
+		$inputfields->remove($inputfields->getChildByName('size'));
+		$inputfields->remove($inputfields->getChildByName('pattern'));
+		$inputfields->remove($inputfields->getChildByName('rows'));
+		$inputfields->remove($inputfields->getChildByName('minlength'));
+		$inputfields->remove($inputfields->getChildByName('maxlength'));
+		$inputfields->remove($inputfields->getChildByName('showCount'));
+		
+		return $inputfields; 
+	}
+
+	// Render frontend
+	public function ___renderValue() {
+		if($this->contentType == FieldtypeTextarea::contentTypeHTML) {
+			$out = "<div class='InputfieldTextareaContentTypeHTML'>" . 
+				$this->wire('sanitizer')->purify($this->attr('value')) . "</div>";
+		} else {
+			$out = nl2br(htmlentities($this->attr('value'), ENT_QUOTES, "UTF-8"));
+		}	
+		return $out;
+	}
+
+	// ???
+	public function ___getConfigAllowContext($field) {
+		return array_merge(parent::___getConfigAllowContext($field), array('rows')); 
+	}
+
+	// Attribute is missing value Fix
+	public function getAttributes() {
+		$this->attr('value',$this->value);
+		$this->attr('name',$this->name);
+		$attrs = parent::getAttributes();
+		return $attrs;
+	}
+
+}
