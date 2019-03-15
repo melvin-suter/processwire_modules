@@ -386,23 +386,29 @@ class DkTemplate extends Process {
 			$generatedTitle = str_replace('{{page-name}}','<?=$page->title;?>',$generatedTitle);
 			$head .= '    <title>'.$generatedTitle."</title>\n";
 
-			$head .= "    \n    <!-- Styles -->\n";
+			$head .= "    \n    <!-- Global Styles -->\n";
 			// Add Stylesheets
 			foreach($config['DkTemplate']['sass']['files'] as $sassFile){
 				$cssFilePath = '<?=$config->urls->templates;?>'. $config['DkTemplate']['sass']['outputPath'] . $config['DkTemplate']['template']['hash'].'_'.pathinfo($sassFile)['filename'].'.css';
 				$head .= "    <link rel=\"stylesheet\" href=\"$cssFilePath\"/>\n";
 			}
+			$head .= "    \n    <!-- Page Style -->\n";
 			// Add Page-Stylesheet if exists
 			$cssFileUrl = '\'.$config->urls->templates.\''. $config['DkTemplate']['sass']['outputPath'] . $config['DkTemplate']['template']['hash'].'_\'.$page->template->name.\'.css';
 			$cssFilePath = '\'.$config->paths->templates.\''. $config['DkTemplate']['sass']['outputPath'] . $config['DkTemplate']['template']['hash'].'_\'.$page->template->name.\'.css';
 			$head .= "    <?= is_file('$cssFilePath') ? '<link rel=\"stylesheet\" href=\"$cssFileUrl\"/>' : '';?>\n";
 
-			$head .= "    \n    <!-- Scripts -->\n";
+			$head .= "    \n    <!-- Global Scripts -->\n";
 			// Add JS
 			foreach($config['DkTemplate']['js']['files'] as $jsFile){
 				$jsFilePath = '<?=$config->urls->templates;?>'. $config['DkTemplate']['js']['outputPath'] . $config['DkTemplate']['template']['hash'].'_'.pathinfo($jsFile)['filename'].'.min.js';
 				$head .= "    <script src=\"$jsFilePath\"/></script>\n";
 			}
+			$head .= "    \n    <!-- Page Script -->\n";
+			// Add Page-Stylesheet if exists
+			$jsFileUrl = '\'.$config->urls->templates.\''. $config['DkTemplate']['js']['outputPath'] . $config['DkTemplate']['template']['hash'].'_\'.$page->template->name.\'.min.js';
+			$jsFilePath = '\'.$config->paths->templates.\''. $config['DkTemplate']['js']['outputPath'] . $config['DkTemplate']['template']['hash'].'_\'.$page->template->name.\'.min.js';
+			$head .= "    <?= is_file('$jsFilePath') ? '<script src=\"$jsFileUrl\"/></script>\n' : '';?>\n";
 
 			$head .= "  </head>\n  <body>\n";
 			$head .= '    '.implode("\n    ",explode("\n",$config['DkTemplate']['template']['customHead']));
@@ -497,8 +503,20 @@ class DkTemplate extends Process {
 				unlink($file); // delete file
 		}
 
+		// Generate all Global JS Files
 		foreach($config['DkTemplate']['js']['files'] as $jsFile){
 			$jsPath = $this->config->paths->templates.$jsFile;
+			if(is_file($jsPath)) {
+				$minJsContent = \JShrink\Minifier::minify(file_get_contents($jsPath));
+				file_put_contents($path.$config['DkTemplate']['template']['hash'].'_'.pathinfo($jsPath)['filename'].'.min.js',$minJsContent);
+			}
+		}
+
+		// Generate all Page SASS Files
+		foreach($config['DkTemplate']['js']['customTemplates'] as $templateID){
+			$templateName = $this->templates->get($templateID)->name;
+			$jsPath = $this->config->paths->templates.$config['DkTemplate']['js']['customPath'].$templateName.'.js';
+
 			if(is_file($jsPath)) {
 				$minJsContent = \JShrink\Minifier::minify(file_get_contents($jsPath));
 				file_put_contents($path.$config['DkTemplate']['template']['hash'].'_'.pathinfo($jsPath)['filename'].'.min.js',$minJsContent);
