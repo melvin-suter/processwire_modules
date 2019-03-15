@@ -1,0 +1,272 @@
+<?php namespace ProcessWire;
+
+class DkFormsCore extends WireData implements Module,ConfigurableModule {
+
+	static protected $defaults = [
+		'basic-page' => [
+			'normalFields' => ['title'],
+			'pageFields' => [],
+			'yamlFields' => [],
+			'fileFields' => [],
+		],
+	];
+
+	public static function getModuleInfo() {
+
+		return array(
+			'title' => 'DkFormsCore', 
+			'version' => 1, 
+			'summary' => 'My Forms functions',
+			'href' => '',
+			'singular' => true, 
+			'autoload' => true, 
+			'icon' => 'smile-o', 
+			);
+	}
+	public function __construct() {
+	  $this->setArray(self::$defaults);
+	}
+
+	public function init() {
+		$this->addHook('Page::savePageFields', $this, 'savePageFields'); 
+		$this->addHook('Page::postPageFields', $this, 'postPageFields'); 
+		$this->addHook('Page::deletePageID', $this, 'deletePageID'); 
+		$this->addHook('Page::getSearchTerm', $this, 'getSearchTerm'); 
+		$this->addHook('Page::deleteTmpDir', $this, 'deleteTmpDir'); 
+	}
+
+
+	public function deleteTmpDir($event)
+	{
+		$upload_path = $this->config->paths->root . 'tmp_uploads/';
+		foreach(scandir($upload_path) as $filename)
+			unlink($upload_path.$filename);
+	}
+
+	public function getSearchTerm($event)
+	{
+		$selector = "";
+		if($this->input->get('search-term') != null)
+		{
+		
+			$columns = [
+				'title' => 'title',
+				'manufacturer' => 'manufacturer.title',
+				'version'=>'version',
+				'model'=>'model',
+				'hostname'=>'hostname',
+				'ips'=>'ips',
+				'ip'=>'ips',
+				'group' => 'group',
+				'specs' => 'specs',
+			];
+			$hit = false;
+			$column_string = "";
+			$value_string = $this->input->get('search-term');
+		
+			foreach($columns as $col => $field) 
+			{
+				if(substr($value_string,0,strlen($col)) == $col)
+				{
+					$column_string = "$field|";
+					$value_string = substr($value_string,strlen($col)+1);
+					$hit = true;
+				}
+			}
+		
+			if(!$hit)
+			{
+				$column_string = join('|',array_values($columns));
+			}
+			else
+				$column_string = substr($column_string,0,-1);
+			
+			$selector = ",$column_string%=".$value_string;
+		}
+		$event->return = $selector;
+	}
+
+	public function deletePageID($event)
+	{
+		if($this->input->get('delete') != null)
+		{
+			$page = $this->pages->get($this->input->get('delete'));
+			if($page != null)
+				$page->delete();
+			header('Location:'.$this->page->url());
+			die;
+		}
+	}
+
+	public function postPageFields($event)
+	{
+		if($this->input->requestMethod() == 'POST') 
+        {
+			switch($this->input->get('action'))
+			{
+				case 'upload':
+					$this->uploadFields();
+					break;
+				default:
+					$this->savePageFields();
+					break;
+			}
+	        header('Location:'.$this->page->url);
+	        die;
+        }
+	}
+
+	public function savePageFields($event = null) 
+	{
+		$config = $this->modules->getConfig('DkFormsCore')[$this->page->template->name];
+
+		$normalFields = $config['normalFields'];//['hostname','ip','title','model','comment','version','title'];
+		$pageFields = $config['pageFields'];/* [
+			'manufacturer' => ['template' => 'dataitem','parent' => '/data/manufacturer/'],
+			'group' => ['template' => 'group','parent' => '/data/groups/'],
+		];*/
+		$yamlFields = $config['yamlFields']; /*[
+			'specs' => ['key' => 'key_','value' => 'value_'],
+		];*/
+		
+		$this->page->of(false);
+
+		foreach($normalFields as $field)
+		{			
+			$this->page->$field = $this->input->post($field);	
+		}
+		
+		foreach($pageFields as $field => $fieldProperties)
+			$this->saveOrCreatePage($field,$fieldProperties['parent'],$fieldProperties['template']);	
+		
+		foreach($yamlFields as $field => $fieldProperties)
+			$this->saveYamlField($field,$fieldProperties['key'],$fieldProperties['value'],$fieldProperties['mode']);
+		
+		$this->page->save();
+	}
+
+	public function saveYamlField($field,$key,$value,$mode)
+	{
+		$yaml = '';
+		switch($mode)
+		{
+			case 'direct':
+				$yaml = $this->input->post($field);
+			break;
+
+			default:
+				foreach($this->input->post() as $post_key => $post_value)
+				{
+					if(substr($post_key,0,strlen($key)) == $key)
+					{
+						$id = substr($post_key,4);
+						$ikey = $post_value;
+						$ivalue = $this->input->post($value.$id);
+						$yaml .= "$ikey: $ivalue\n";	
+					}
+				}
+			break;
+		}
+		$this->page->$field = $yaml;
+	}
+
+	public function saveOrCreatePage($field,$parent,$template)
+	{
+		$title = $this->sanitizer->text($this->input->post($field));
+	    $titlepages = $this->pages->find("parent=$parent,template=$template,include=all,title=$title");
+
+	    if($titlepages->count > 0)
+    		$this->page->$field = $titlepages[0]->id;
+    	else if(strlen($title) > 0)
+    	{
+            $newMan = new Page();
+            $newMan->template = $template;
+            $newMan->parent = $this->pages->get($parent);
+            $newMan->title = $title;
+            $newMan->name = $this->sanitizer->pageName($title);
+            $newMan->save();
+            $this->page->$field = $newMan->id;
+        }
+        else
+        {
+            $this->page->$field = null;
+        }
+	}
+
+	public function uploadFields($event = null) 
+	{
+		$config = $this->modules->getConfig('DkFormsCore')[$this->page->template->name];
+
+		$fileFields = $config['fileFields'];/* [
+			'image' => ['extensions' => ['jpg', 'jpeg', 'png', 'gif']],
+		];*/
+		
+		$this->page->of(false);
+	
+		foreach($fileFields as $field => $fieldProperties)
+			$this->saveFileField($field,$fieldProperties['extensions']);
+		
+		$this->page->save();
+	}
+
+	public function saveFileField($field,$extensions)
+	{
+		$upload_path = $this->config->paths->root . 'tmp_uploads/';
+		$u = new WireUpload($field);
+		$u->setMaxFiles(1);
+		$u->setOverwrite(false);
+		$u->setDestinationPath($upload_path);
+		$u->setValidExtensions($extensions); 
+		
+		$files = $u->execute();
+
+		if ($u->getErrors()) {	 
+			foreach($files as $filename) unlink($upload_path . $filename);
+			foreach($u->getErrors() as $e) echo $e;
+		} else {
+			foreach($files as $filename)
+			{
+				$upload_path = $this->config->paths->root . 'tmp_uploads/' . $filename;
+				$this->page->$field->removeAll();
+				$this->page->$field = $upload_path; 
+				$this->page->save();
+			}
+		}
+	}
+
+
+	public function getFieldTyp($field)
+	{
+		$type = "";
+		switch($field->type)
+		{
+			case 'FieldtypeYaml':
+				$type = 'yamlFields';
+				break;
+
+			case 'FieldtypePage':
+				$type = 'pageFields';
+				break;
+
+			case 'FieldtypeFile':
+			case 'FieldtypeImage':
+				$type = 'fileFields';
+				break;
+
+			default:
+				$type = 'normalFields';
+				break;
+		}
+		return $type;
+	}
+
+	public function getModuleConfigInputfields(InputfieldWrapper $page) {
+
+		$aField = $this->modules->get('InputfieldText');
+		$aField->name = 'pseudo';
+		$aField->label = 'pseudo';
+		$page->add($aField);
+
+		return $page->render();
+	  }
+}
