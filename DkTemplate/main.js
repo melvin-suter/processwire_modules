@@ -1,10 +1,13 @@
 (() => {
     document.addEventListener('click',function(ev){
-        if(ev.target && ev.target.name== 'deleteRow'){
-            ev.target.parentElement.parentElement.remove();
+        if(ev.target && (ev.target.name== 'deleteRow' || ev.target.parentElement.name == 'deleteRow')){
+            if(ev.target.name == 'deleteRow')
+                ev.target.parentElement.parentElement.remove();
+            else
+                ev.target.parentElement.parentElement.parentElement.remove();
         }
 
-        if(ev.target && ev.target.id== 'addRow'){
+        if(ev.target && (ev.target.id == 'addRow' || ev.target.parentElement.id == 'addRow')){
             var key = document.getElementById('metaNewKey').value;
             var value = document.getElementById('metaNewValue').value;
 
@@ -40,7 +43,11 @@
             td.append(input);
             tr.append(td);
             
-            ev.target.parentElement.parentElement.parentElement.insertBefore(tr, ev.target.parentElement.parentElement);
+            if(ev.target.id == 'addRow')
+                ev.target.parentElement.parentElement.parentElement.insertBefore(tr, ev.target.parentElement.parentElement);
+            else
+                ev.target.parentElement.parentElement.parentElement.parentElement.insertBefore(tr, ev.target.parentElement.parentElement.parentElement);
+
             document.getElementById('metaNewKey').value = "";
             document.getElementById('metaNewValue').value = "";
         }

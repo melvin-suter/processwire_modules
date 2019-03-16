@@ -1,0 +1,206 @@
+<?php namespace ProcessWire;
+
+class DkForms extends Process {
+
+	static protected $defaults = [];
+
+	public static function getModuleInfo() {
+		return array(
+			'title' => 'DkForms', 
+			'version' => 1, 
+			'summary' => 'DK - Form Handler',
+			'singular' => true, 
+			'icon' => 'kiwi-bird', 
+			'autoload' => true, 
+			'requires' => ['DkCore'],
+			/*'page' => [
+                'name' => 'dk-forms',
+                'title' => 'DK Form',
+                'icon' => 'docs',
+            ], */
+        );
+	}
+	public function __construct() {
+		$this->setArray(self::$defaults);
+    }
+    
+    public function ___install() {
+        $newPageGroup = $this->pages->get($this->config->urls->admin.'dk/');
+
+        // Create Forms Page
+        $newPage = new Page;
+        $newPage->parent = $newPageGroup;
+        $newPage->template = 'admin';
+        $newPage->title = 'Forms';
+        $newPage->name = 'forms';
+        $newPage->process = 'DkForms';
+        $newPage->save();
+    }
+
+
+	public function init() {
+        // Save Default Config
+        $this->modules->get('DkConfig')->checkConfig();
+        
+        // Add Hooks
+		$this->addHookAfter('Page::render', $this, 'pageRenderAfter'); 
+		$this->addHookAfter('Page::render', $this, 'pageRenderBefore'); 
+	}
+    
+    public function ___execute() {
+        $config = $this->modules->getConfig('DkCore');
+
+		// Create Page and Form
+        $page = $this->modules->get('InputfieldFieldset');
+		$form = $this->modules->get('InputfieldForm');
+        $form->action = './save';
+        
+        // Start: Template
+		$markupField = $this->modules->get('InputfieldMarkup');
+		$markupField->value = "<h3>Templates</h3>";
+
+		$table = $this->modules->get('MarkupAdminDataTable');
+		$table->setEncodeEntities(false);
+		$table->headerRow(['Template', 'Create','Create Children','Save','Delete']);
+		foreach($this->templates as $template) {
+			if(!in_array($template->id,[2,3,4,5]))
+				$table->row([
+					$template->name, 
+					'<input type="checkbox" name="create-templates[]" '.(in_array($template->id,$config['DkForms']['create_templates']) ? 'checked' : '').' value="'.$template->id.'"/>',
+					'<input type="checkbox" name="create-children-templates[]" '.(in_array($template->id,$config['DkForms']['createChildren_templates']) ? 'checked' : '').' value="'.$template->id.'"/>',
+					'<input type="checkbox" name="save-templates[]" '.(in_array($template->id,$config['DkForms']['save_templates']) ? 'checked' : '').' value="'.$template->id.'"/>',
+					'<input type="checkbox" name="delete-templates[]" '.(in_array($template->id,$config['DkForms']['delete_templates']) ? 'checked' : '').' value="'.$template->id.'"/>'
+					]);
+		}
+		$markupField->value .= $table->render();
+
+		$form->add($markupField);
+
+		// End: Template
+
+		// Add Save Button
+		$button = $this->modules->get('InputfieldSubmit');
+		$button->value = 'Save';
+		$button->icon = 'floppy-o';
+		$form->add($button);
+
+		// Add Form to Page and render
+		$page->add($form);
+		return $page->render();
+    }
+
+    public function ___executeSave() {
+        // Throws Exception if it isn't a submited form
+		if(!$this->input->post('submit')) throw new Wire404Exception();
+
+		// Get Config
+		$config = $this->modules->getConfig('DkCore');
+
+		// Set Config from Input
+        $config['DkForms']['create_templates'] = is_array($this->input->post('create-templates')) ? $this->input->post('create-templates') : [];
+        $config['DkForms']['createChildren_templates'] = is_array($this->input->post('create-children-templates')) ? $this->input->post('create-children-templates') : [];
+        $config['DkForms']['save_templates'] = is_array($this->input->post('save-templates')) ? $this->input->post('save-templates') : [];
+        $config['DkForms']['delete_templates'] = is_array($this->input->post('delete-templates')) ? $this->input->post('delete-templates') : [];
+        
+		// Try to save settings
+		if($this->modules->saveConfig('DkCore',$config))
+			$this->message('Saved');
+		else
+			$this->message('Error While Saving!');
+
+		// redirect to the previous page
+		$this->session->redirect('./');
+    }
+
+    /* Add handler to Template */
+	public function pageRenderBefore($event = null) {
+        $config = $this->modules->getConfig('DkCore');
+
+		// if not admin
+		if($this->page->Render != 'admin') {
+            // if loggedin, has action & CSRF Valide
+            if($this->user->isLoggedIn() && $this->input->post('action') != false && $this->session->CSRF->validate()) {
+                // Get redirect URL (post target-url)
+                $targetURL = !$this->input->post('target-url') ? ($this->input->post('action') == 'delete-page' ? $this->page->parent()->url : $this->page->url) : $this->input->post('target-url'); 
+
+                // Switch Action
+                switch($this->input->post('action'))
+                {
+                    case 'save-page':
+                        // Check if save is active on template
+                        if(!in_array($this->page->template->id,$config['DkForms']['save_templates']))
+                            break;
+
+                        // Set Page of
+                        $this->page->of(false);
+                        // Assign fields
+                        foreach($this->input->post() as $key => $value)
+                        {
+                            if($this->page->hasField($key)) {
+                                $this->page->$key = $this->input->post($key,$this->page->$key->type);
+                            }
+                        }
+                        // Save Page
+                        $this->page->save();
+                        break;
+
+                    case 'delete-page':
+                        // Check if delete is active on template and not home
+                        if(!in_array($this->page->template->id,$config['DkForms']['delete_templates']) || $this->page->id == 1) {
+                            // Reassign targetpath to go back, if target not set
+                            $targetURL = !$this->input->post('target-url') ? $this->page->url : $this->input->post('target-url'); 
+                            break;
+                        }
+
+                        // Set Page of
+                        $this->page->of(false);
+                        // Delete Page
+                        $this->page->delete();
+                        break;
+                        
+                    case 'create-page':
+                        // Check if create children is active on template or if required fields missing or if template has create active
+                        if(!in_array($this->page->template->id,$config['DkForms']['createChildren_templates']) || !$this->input->post('title') || !$this->input->post('template') || !in_array($this->templates->get($this->input->post('template'))->id,$config['DkForms']['create_templates']))
+                            break;
+
+                        // Create Page
+                        $newPage = new Page;
+                        $newPage->template = $this->input->post('template');
+                        $newPage->title = $this->input->post('title');
+                        $newPage->parent = $this->page;
+                        $newPage->name = !$this->input->post('name') ? $this->sanitizer->pageName($this->input->post('title'), true) : $this->sanitizer->pageName($this->input->post('name'), true);
+
+                        // Assign other fields
+                        foreach($this->input->post() as $key => $value)
+                        {
+                            if($this->page->hasField($key) && !in_array($key,['template','title','name'])) {
+                                $newPage->$key = $this->input->post($key,$this->page->$key->type);
+                            }
+                        }
+
+                        // Save Page
+                        $newPage->save();
+
+                        // Reassign targetpath to go to new page, if target not set
+                        $targetURL = !$this->input->post('target-url') ? $newPage->url : $this->input->post('target-url'); 
+
+                        break;
+                }
+                
+                header("Location: ".$targetURL);
+                exit;
+            }
+		}
+    }
+
+    /* Add Token Field */
+	public function pageRenderAfter($event = null) {
+        $config = $this->modules->getConfig('DkCore');
+
+		// if not admin
+		if($this->page->template != 'admin') {
+            $event->return = str_replace('</form>','<input type="hidden" id="_post_token" name="'.$this->session->CSRF->getTokenName().'" value="'.$this->session->CSRF->getTokenValue().'"/></form>',$event->return);
+		}
+    }
+
+}

@@ -1,0 +1,228 @@
+<?php namespace ProcessWire;
+
+class DkNavbar extends Process {
+
+	static protected $defaults = [];
+
+	public static function getModuleInfo() {
+		return array(
+			'title' => 'DkNavbar', 
+			'version' => 1, 
+			'summary' => 'DK - Navbar Generator',
+            'icon' => 'kiwi-bird', 
+            'autoload' => true,
+			'requires' => ['InputfieldDKEditor','DkCore'],
+        );
+	}
+	public function __construct() {
+        $this->setArray(self::$defaults);
+    }
+
+	public function init() {
+        // Add Hooks
+		$this->addHookAfter('Pages::save', $this, 'pageSave'); 
+		$this->addHookAfter('Templates::save', $this, 'templateSave'); 
+    }
+    
+    public function ___install() {
+        $newPageGroup = $this->pages->get($this->config->urls->admin.'dk/');
+
+        // Create Navbar Page
+        $newPage = new Page;
+        $newPage->parent = $newPageGroup;
+        $newPage->template = 'admin';
+        $newPage->title = 'Navbar';
+        $newPage->name = 'navbar';
+        $newPage->process = 'DkNavbar';
+        $newPage->save();
+
+        // Create Field
+        if(!$this->fields->get('inMenu')->id)
+        {
+            $newField = new Field;
+            $newField->type = $this->modules->get("FieldtypeCheckbox");
+            $newField->name = 'inMenu';
+            $newField->label = 'Show in Menu';
+            $newField->save(); // save the field
+
+            // Add Field to all Templates
+            foreach($this->templates as $template) {
+                if(!in_array($template->id,[2,3,4,5])) {
+                    $template->fields->add("inMenu");
+                    $template->fields->save();
+                }
+            }
+        }
+    }
+
+    public function ___execute() {
+        $config = $this->modules->getConfig('DkCore');
+
+		// Create Page and Form
+        $page = $this->modules->get('InputfieldFieldset');
+		$form = $this->modules->get('InputfieldForm');
+        $form->action = './save';
+        
+        // Add Text Field
+		$inputField = $this->modules->get('InputfieldText');
+		$inputField->label = "Selector";
+		$inputField->name = "selector";
+		$inputField->value = $config['DkNavbar']['selector'];
+		$form->add($inputField);
+        
+        // Add Text Field
+		$inputField = $this->modules->get('InputfieldText');
+		$inputField->label = "Navbar Template Path";
+		$inputField->name = "navbarPath";
+		$inputField->value = $config['DkNavbar']['navbarPath'];
+		$form->add($inputField);
+        
+        // Add Text Field
+		$inputField = $this->modules->get('InputfieldText');
+		$inputField->label = "Active Classname";
+		$inputField->name = "activeClass";
+		$inputField->value = $config['DkNavbar']['activeClass'];
+		$form->add($inputField);
+        
+        // Add Text Field
+		$inputField = $this->modules->get('InputfieldText');
+		$inputField->label = "Open Classname";
+		$inputField->name = "openClass";
+		$inputField->value = $config['DkNavbar']['openClass'];
+		$form->add($inputField);
+        
+        // Add Text Field
+		$inputField = $this->modules->get('InputfieldDKEditor');
+		$inputField->label = "Item Template";
+		$inputField->name = "itemTemplate";
+		$inputField->language = "php";
+		$inputField->height = "150px";
+		$inputField->value = $config['DkNavbar']['itemTemplate'];
+		$form->add($inputField);
+        
+        // Add Text Field
+		$inputField = $this->modules->get('InputfieldDKEditor');
+		$inputField->label = "Parent Item Template";
+		$inputField->name = "parentTemplate";
+		$inputField->language = "php";
+		$inputField->height = "150px";
+		$inputField->value = $config['DkNavbar']['parentTemplate'];
+		$form->add($inputField);
+        
+        // Add Text Field
+		$inputField = $this->modules->get('InputfieldDKEditor');
+		$inputField->label = "Container Template";
+		$inputField->name = "containerTemplate";
+		$inputField->language = "php";
+		$inputField->height = "150px";
+		$inputField->value = $config['DkNavbar']['containerTemplate'];
+		$form->add($inputField);
+
+		// Add Save Button
+		$button = $this->modules->get('InputfieldSubmit');
+		$button->value = 'Save';
+		$button->icon = 'floppy-o';
+		$form->add($button);
+
+		// Add Save & Generate Button
+		$button = $this->modules->get('InputfieldSubmit');
+		$button->value = 'Save & Generate';
+		$button->name = 'action-generate';
+		$form->add($button);
+
+		// Add Form to Page and render
+		$page->add($form);
+		return $page->render();
+    }
+
+    public function ___executeSave() {
+        // Throws Exception if it isn't a submited form
+		if(!$this->input->post('submit') && !$this->input->post('action-generate')) throw new Wire404Exception();
+
+		// Get Config
+		$config = $this->modules->getConfig('DkCore');
+
+		// Set Config from Input
+        $config['DkNavbar']['selector'] = $this->input->post('selector');
+        $config['DkNavbar']['navbarPath'] = $this->input->post('navbarPath');
+        $config['DkNavbar']['activeClass'] = $this->input->post('activeClass');
+        $config['DkNavbar']['openClass'] = $this->input->post('openClass');
+        $config['DkNavbar']['itemTemplate'] = $this->input->post('itemTemplate');
+        $config['DkNavbar']['parentTemplate'] = $this->input->post('parentTemplate');
+        $config['DkNavbar']['containerTemplate'] = $this->input->post('containerTemplate');
+        
+		// Try to save settings
+		if($this->modules->saveConfig('DkCore',$config)){
+            $this->message('Saved');
+            if($this->input->post('action-generate') != false){
+                $this->generateNavbar();
+            }
+        }
+		else
+			$this->message('Error While Saving!');
+
+		// redirect to the previous page
+		$this->session->redirect('./');
+    }
+
+    public function generateNavbar() {
+		$config = $this->modules->getConfig('DkCore');
+        $navbarContent = "";
+        foreach($this->pages->find('parent=/,inMenu=1,'.$config['DkNavbar']['selector']) as $parentItem){
+            $children = $parentItem->find('inMenu=1,'.$config['DkNavbar']['selector']);
+            if($children->count() > 0) {
+                $childrenString = "";
+                foreach($children as $item) {
+                    $itemString = $config['DkNavbar']['itemTemplate'];
+                    $itemString = str_replace('{{TITLE}}',$item->title,$itemString);
+                    $itemString = str_replace('{{URL}}',$item->url,$itemString);
+                    $itemString = str_replace('{{ID}}',$item->id,$itemString);
+                    $itemString = str_replace('{{ACTIVE}}','<?= $input->url(false) == "'.$item->url.'" ? "'.$config['DkNavbar']['activeClass'].'" : "";?>',$itemString);
+                    $childrenString .= $itemString;
+                }
+                $parentString = $config['DkNavbar']['parentTemplate'];
+                $parentString = str_replace('{{TITLE}}',$parentItem->title,$parentString);
+                $parentString = str_replace('{{CHILDREN}}',$childrenString,$parentString);
+                $parentString = str_replace('{{URL}}',$parentItem->url,$parentString);
+                $parentString = str_replace('{{ID}}',$parentItem->id,$parentString);
+                $parentString = str_replace('{{ACTIVE}}','<?= $input->url(false) == "'.$parentItem->url.'" ? "'.$config['DkNavbar']['activeClass'].'" : "";?>',$parentString);
+                $parentString = str_replace('{{OPEN}}','<?= substr($input->url(false),0,'.strlen($parentItem->url).') == "'.$parentItem->url.'" ? "'.$config['DkNavbar']['openClass'].'" : "";?>',$parentString);
+                $navbarContent .= $parentString;
+            } else {
+                $parentString = $config['DkNavbar']['itemTemplate'];
+                $parentString = str_replace('{{TITLE}}',$parentItem->title,$parentString);
+                $parentString = str_replace('{{URL}}',$parentItem->url,$parentString);
+                $parentString = str_replace('{{ID}}',$parentItem->id,$parentString);
+                $parentString = str_replace('{{ACTIVE}}','<?= $input->url(false) == "'.$parentItem->url.'" ? "'.$config['DkNavbar']['activeClass'].'" : "";?>',$parentString);
+                $navbarContent .= $parentString;
+            }
+        }
+
+        $markup = $config['DkNavbar']['containerTemplate'];
+        $markup = str_replace('{{ITEMS}}',$navbarContent,$markup);
+        $itemString = str_replace('{{ID}}',$item->id,$itemString);
+
+        file_put_contents($this->config->paths->templates.$config['DkNavbar']['navbarPath'],$markup);
+
+        $this->message('Generated');
+    }
+
+    public static function showNavbar() {
+        wireIncludeFile(wire('config')->paths->templates.'include/navbar.php');
+    }
+
+    public function templateSave($event = Null){
+        // Add Field to all Templates
+        foreach($this->templates as $template) {
+            if(!$template->hasField('inMenu') && !in_array($template->id,[2,3,4,5])) {
+                $template->fields->add("inMenu");
+                $template->fields->save();
+            }
+        }
+    }
+
+    public function pageSave(){
+        $this->generateNavbar();
+    }
+
+}

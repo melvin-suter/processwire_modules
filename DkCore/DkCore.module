@@ -12,18 +12,32 @@ class DkCore extends WireData implements Module,ConfigurableModule {
 			'configurable' => true,
 			'href' => '',
 			'singular' => true, 
-			'autoload' => true, 
+			'autoload' => true,
 			'icon' => 'kiwi-bird', 
-            'installs' => array("DkTemplate", "InputfieldDKEditor",'DkConfig'),
+			'installs' => array("InputfieldDKEditor",'DkTemplateEditor',"DkTemplate",'DkForms','DkNavbar','DkConfig'),
         );
 	}
+	
 	public function __construct() {
-	  $this->setArray(self::$defaults);
-		// Save Default Config
+		$this->setArray(self::$defaults);
+	}
+
+	public function ___install(){
+		// Create Parent Page
+		$newPageGroup = new Page;
+		$newPageGroup->parent = $this->pages->get(2);
+		$newPageGroup->template = 'admin';
+		$newPageGroup->title = 'DK';
+		$newPageGroup->name = 'dk';
+		$newPageGroup->process = 'ProcessList';
+		$newPageGroup->save();
+	}
+
+	public function ___uninstall() {
+        $this->pages->get($this->config->urls->admin.'dk/')->delete(true);
 	}
 
 	public function init() {
-		//$this->addHookAfter('Page::render', $this, 'pageRender'); 
 	}
 
 	public static function getModuleConfigInputfields(){

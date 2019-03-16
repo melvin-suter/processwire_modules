@@ -36,12 +36,22 @@ class InputfieldDKEditor extends InputfieldTextarea {
 		// Get Attributes
 		$attrs = $this->getAttributes();
 		unset($attrs['size'], $attrs['type']); 
-		if($this->hasFieldtype !== false) unset($attrs['maxlength']); 
+		if($this->hasFieldtype !== false) unset($attrs['maxlength']);
+
+		$language = 'php';
+		if(isset($attrs['language']))
+			if(is_file($this->config->urls->InputfieldDKEditor.'ace-src/mode-'.$attrs['language'].'.min.js'))
+				$language = $attrs['language'];
+		$height = isset($attrs['height']) ? $attrs['height'] : '100%; min-height: 450px';
 		
 		$out = '<textarea id="aceeditor-'.$this->name.'" '.$this->getAttributesString($attrs).'>'.htmlspecialchars($this->value, ENT_QUOTES, "UTF-8").'</textarea>';
-		$out .= '<div id="editor-'.$this->name.'" style="height: 100%;min-height: 300px;">'.htmlspecialchars($this->value, ENT_QUOTES, "UTF-8").'</div>';
-		$out .= '<script src="'.$this->config->urls->InputfieldDKEditor.'/ace.min.js" type="text/javascript" charset="utf-8"></script>';
-		$out .= '<script src="'.$this->config->urls->InputfieldDKEditor.'/theme.min.js" type="text/javascript" charset="utf-8"></script>';
+		$out .= '<div id="editor-'.$this->name.'" style="height:'.$height.';">'.htmlspecialchars($this->value, ENT_QUOTES, "UTF-8").'</div>';
+		
+		// Load Sources
+		$this->config->scripts->add($this->config->urls->InputfieldDKEditor.'ace-src/ace.js');
+		$this->config->scripts->add($this->config->urls->InputfieldDKEditor.'theme.min.js');
+		$this->config->scripts->add($this->config->urls->InputfieldDKEditor.'ace-src/mode-'.$language.'.min.js');
+		
 		$out .= '<script> 
 			if(window.editors == undefined)
 				window.editors = {};
@@ -51,9 +61,12 @@ class InputfieldDKEditor extends InputfieldTextarea {
 			window.editors["'.$this->name.'"].setTheme("ace/theme/tomorrow_night");
 			window.textareas["'.$this->name.'"] = $(\'#aceeditor-'.$this->name.'\');
 			window.textareas["'.$this->name.'"].hide();
+	
+			window.editors["'.$this->name.'"].getSession().setMode("ace/mode/'.$language.'");
+			window.editors["'.$this->name.'"].getSession().setUseWrapMode(true);
+			
 			window.editors["'.$this->name.'"].getSession().setValue(window.textareas["'.$this->name.'"].val());
 			window.editors["'.$this->name.'"].getSession().on("change", function(){
-				console.log(window.editors["'.$this->name.'"].getSession().getValue());
 				window.textareas["'.$this->name.'"].val(window.editors["'.$this->name.'"].getSession().getValue());
 			});
 		</script>';
@@ -97,6 +110,7 @@ class InputfieldDKEditor extends InputfieldTextarea {
 	public function getAttributes() {
 		$this->attr('value',$this->value);
 		$this->attr('name',$this->name);
+		$this->attr('height',$this->height);
 		$attrs = parent::getAttributes();
 		return $attrs;
 	}

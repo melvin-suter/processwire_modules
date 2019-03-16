@@ -7,6 +7,30 @@ class DkConfig extends Process {
             'project-title' => 'PAGENAME',
         ],
         'DkTemplate' => [
+            'active_packages' => [],
+            'available_packages' => [
+                'bootstrap' => [
+                    'package' => 'bootstrap',
+                    'js' => ['js/bootstrap.min.js'],
+                    'css' => ['css/bootstrap.min.css'],
+                    'title' => 'Bootstrap 4',
+                    'version' => 'v4.3.1',
+                ],
+                'fontawesome-all-css' => [
+                    'package' => 'fontawesome',
+                    'js' => [],
+                    'css' => ['css/all.min.css'],
+                    'title' => 'FontAwesome Icon Pack (All CSS)',
+                    'version' => 'v5.7.2',
+                ],
+                'fontawesome-all-js' => [
+                    'package' => 'fontawesome',
+                    'js' => ['js/all.min.js'],
+                    'css' => [],
+                    'title' => 'FontAwesome Icon Pack (All JS)',
+                    'version' => 'v5.7.2',
+                ],
+            ],
             'js' => [
                 'files' => ['scripts/source/main.js'],
                 'outputPath' => 'scripts/cache/',
@@ -35,6 +59,21 @@ class DkConfig extends Process {
                 'customFoot' => '',
             ],
         ],
+        'DkForms' => [
+            'create_templates' => [],
+            'createChildren_templates' => [],
+            'save_templates' => [],
+            'delete_templates' => [],
+        ],
+        'DkNavbar' => [
+            'selector' => 'sort=title',
+            'activeClass' => 'active',
+            'openClass' => 'open',
+            'itemTemplate' => '<a class="{{ACTIVE}}" href="{{URL}}">{{TITLE}}</a>',
+            'parentTemplate' => '<a href="{{URL}}">{{TITLE}}</a><div>{{CHILDREN}}</div>',
+            'containerTemplate' => '<div>{{ITEMS}}</div>',
+            'navbarPath' => 'include/navbar.php',
+        ],
     ];
 
 	public static function getModuleInfo() {
@@ -43,12 +82,7 @@ class DkConfig extends Process {
 			'version' => 1, 
 			'summary' => 'DK - Config Page',
 			'icon' => 'kiwi-bird', 
-			'requires' => ['DkCore','InputfieldDKEditor'],
-			'page' => [
-                'name' => 'dk-config',
-                'title' => 'DK Config',
-                'icon' => 'cogs',
-            ], 
+			'requires' => ['InputfieldDKEditor','DkCore'],
         );
 	}
 	public function __construct() {
@@ -61,12 +95,38 @@ class DkConfig extends Process {
 		$this->addHookBefore('Page::render', $this, 'pageRender'); 
 	}	
     
+    public function ___install() {
+        $newPageGroup = $this->pages->get($this->config->urls->admin.'dk/');
+
+        // Create Config Page
+        $newPage = new Page;
+        $newPage->parent = $newPageGroup;
+        $newPage->template = 'admin';
+        $newPage->title = 'Config';
+        $newPage->name = 'config';
+        $newPage->process = 'DkConfig';
+        $newPage->save();
+    }
+    
     // Sets Default Config
     public function checkConfig() {
         $config = $this->modules->getConfig('DkCore');
 		$config = is_array($config) ? $config : [];
 		$config = array_merge(self::$defaults,$config);
+		$config['DkTemplate']['available_packages'] = is_array($config['DkTemplate']['available_packages']) ? $config['DkTemplate']['available_packages'] : [];
+		$config['DkTemplate']['available_packages'] = array_merge(self::$defaults['DkTemplate']['available_packages'],$config['DkTemplate']['available_packages']);
 		$this->modules->saveConfig('DkCore',$config);
+    }
+
+    public function ___installl() {
+        /*// Create Config Page
+		$newPage = new Page;
+		$newPage->parent = $this->pages->findOne('/dk/');
+		$newPage->template = 'admin';
+		$newPage->title = 'Config';
+		$newPage->name = 'config';
+		$newPage->process = 'DkConfig';
+		$newPage->save();*/
     }
 
     public function ___execute() {
@@ -81,7 +141,15 @@ class DkConfig extends Process {
 		$inputField = $this->modules->get('InputfieldDKEditor');
 		$inputField->label = "Config-YAML";
 		$inputField->name = "config";
+		$inputField->language = "yaml";
 		$inputField->value = yaml_emit($config);
+		$form->add($inputField);
+		
+		$inputField = $this->modules->get('InputfieldCheckbox');
+		$inputField->label = "Debug";
+		$inputField->name = "debug";
+		$inputField->value = 'debug';
+		$inputField->checked = $this->config->debug;
 		$form->add($inputField);
 
 		// Add Save Button
@@ -104,6 +172,15 @@ class DkConfig extends Process {
 
 		// Set Config from Input
         $config = yaml_parse($this->input->post('config'));
+        if($this->input->post('debug') != $this->config->debug) {
+            $configContents = file_get_contents($this->config->paths->root.'site/config.php');
+
+            if($this->input->post('debug'))
+                $configContents = str_replace('$config->debug = false;','$config->debug = true;',$configContents);
+            else
+                $configContents = str_replace('$config->debug = true;','$config->debug = false;',$configContents);
+            file_put_contents($this->config->paths->root.'site/config.php',$configContents);
+        }
         
 		// Try to save settings
 		if($this->modules->saveConfig('DkCore',$config))

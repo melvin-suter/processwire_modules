@@ -1,0 +1,85 @@
+<?php namespace ProcessWire;
+
+class DkTemplateEditor extends Process {
+
+	static protected $defaults = [];
+
+	public static function getModuleInfo() {
+		return array(
+			'title' => 'DkTemplateEditor', 
+			'version' => 1, 
+			'summary' => 'DK - Template Editor',
+			'icon' => 'kiwi-bird', 
+			'requires' => ['InputfieldDKEditor','DkCore'],
+        );
+	}
+	public function __construct() {
+        $this->setArray(self::$defaults);
+    }
+
+	public function init() {
+    }	 
+    
+    public function ___install() {
+        $newPageGroup = $this->pages->get($this->config->urls->admin.'dk/');
+
+        // Create Config Page
+        $newPage = new Page;
+        $newPage->parent = $newPageGroup;
+        $newPage->template = 'admin';
+        $newPage->title = 'Template Editor';
+        $newPage->name = 'template-editor';
+        $newPage->process = 'DkTemplateEditor';
+        $newPage->save();
+    }
+    
+
+    public function ___execute() {
+        if(!$this->input->post('submit')){
+            $config = $this->modules->getConfig('DkCore');
+            
+            $html = '<form action="" method="post">';
+            $html .= '<input type="text" style="width: 100%;margin-bottom: 5px;" name="path" value="'.$this->input->get('path').'"/>';
+            $html .= '<div style="display: flex;margin-bottom: 3px;">';
+
+                $html .= '<div style="width: 70%;">';
+
+                // Add Text Field
+                $inputField = $this->modules->get('InputfieldDKEditor');
+                $inputField->name = "content";
+                $inputField->value = is_file($this->config->paths->templates.$this->input->get('path')) ? file_get_contents($this->config->paths->templates.$this->input->get('path')) : '';
+                $html .= $inputField->render();
+
+                $html .= '</div>';
+
+                $html .= '<div style="width: 30%;padding: 5px;">';
+                
+                $directory = new \RecursiveDirectoryIterator($this->config->paths->templates);
+                $iterator = new \RecursiveIteratorIterator($directory);
+                $files = array();
+                foreach ($iterator as $info) {
+                    if($info->getFilename() != '.' && $info->getFilename() != '..') {
+                        $relativePath = str_replace($this->config->paths->templates,'',$info->getPathname());
+                        $html .= '<div style="font-size: 75%; border: 1px solid #999;padding: 2px 3px;"><a href="?path='.$relativePath.'">'.$relativePath.'</a></div>';
+                    }
+                }
+
+                $html .= '</div>';
+
+            $html .= '</div>';
+
+            // Add Submit Button
+            $button = $this->modules->get('InputfieldSubmit');
+            $button->value = "Save";
+            $html .= $button->render();
+            $html .= '</form>';
+
+            return $html;
+        } else {
+            file_put_contents($this->config->paths->templates.$this->input->post('path'),$this->input->post('content'));
+            $this->message('Saved');
+		    $this->session->redirect('./?path='.$this->input->post('path'));
+        }
+    }
+
+}

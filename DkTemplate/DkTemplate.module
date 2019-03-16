@@ -17,11 +17,6 @@ class DkTemplate extends Process {
 			'icon' => 'kiwi-bird', 
 			'autoload' => true, 
 			'requires' => ['DkCore'],
-			'page' => [
-        'name' => 'dk-template',
-				'title' => 'DK Template',
-				'icon' => 'file',
-      ], 
 		);
 	}
 
@@ -33,11 +28,28 @@ class DkTemplate extends Process {
 	}
 
 	public function init() {
-		$this->addHookAfter('Page::render', $this, 'pageRender'); 
+		// FIX: Initialize DkForms (doens't do it on its own)
+		$this->modules->get('DkForms');
 
 		// Save Default Config
 		$this->modules->get('DkConfig')->checkConfig();
+        
+        // Add Hooks
+		$this->addHookAfter('Page::render', $this, 'pageRender'); 
 	}	
+
+	public function ___install() {
+		$newPageGroup = $this->pages->get($this->config->urls->admin.'dk/');
+
+		// Create Template Page
+		$newPage = new Page;
+		$newPage->parent = $newPageGroup;
+		$newPage->template = 'admin';
+		$newPage->title = 'Templates';
+		$newPage->name = 'templates';
+		$newPage->process = 'DkTemplate';
+		$newPage->save();
+	}
 
 	/********* 
 	* Admin Page
@@ -109,7 +121,14 @@ class DkTemplate extends Process {
 		$inputField->name = "loginTemplate";
 		$inputField->value = $config['DkTemplate']['login']['loginTemplate'];
 		$fieldset->add($inputField);
-
+		
+		$inputField = $this->modules->get('InputfieldCheckbox');
+		$inputField->label = "Check on every page visit?";
+		$inputField->name = "checkEveryVisit";
+		$inputField->value = 'checkEveryVisit';
+		$inputField->checked = $config['DkTemplate']['template']['checkEveryVisit'];
+		$fieldset->add($inputField);
+		
 		$form->add($fieldset);
 		// End: Settings
 
@@ -229,6 +248,33 @@ class DkTemplate extends Process {
 		// End: Scripts
 
 
+		// Start: Packages
+		$fieldset = $this->modules->get('InputfieldFieldset');
+		$fieldset->label = "Packages";
+		$fieldset->collapsed = true;
+
+		$markupField = $this->modules->get('InputfieldMarkup');
+		$markupField->value = "<h3>Available Packages</h3>";
+
+		$table = $this->modules->get('MarkupAdminDataTable');
+		$table->setEncodeEntities(false);
+		$table->headerRow(['Package', 'Version','JS Files','CSS Files','Active']);
+		foreach($config['DkTemplate']['available_packages'] as $key => $package) {
+			$table->row([
+				$package['title'],
+				$package['version'],
+				implode("\n",$package['js']),
+				implode("\n",$package['css']),
+				'<input type="checkbox" name="packages[]" '.(in_array($key,$config['DkTemplate']['active_packages']) ? 'checked' : '').' value="'.$key.'"/>'
+			]);
+		}
+		$markupField->value .= $table->render();
+		$fieldset->add($markupField);
+
+		$form->add($fieldset);
+		// End: Packages
+
+
 
 
 		// Add Save Button
@@ -306,12 +352,15 @@ class DkTemplate extends Process {
 		$config['DkTemplate']['template']['customHead'] = $this->input->post('customHead');
 		$config['DkTemplate']['template']['customFoot'] = $this->input->post('customFoot');
 		$config['Global']['project-title'] = $this->input->post('project-title');
+		$config['DkTemplate']['active_packages'] = is_array($this->input->post('packages')) ? $this->input->post('packages') : [];
+		$config['DkTemplate']['template']['checkEveryVisit'] = $this->input->post('checkEveryVisit');
+		
 
 		$config['DkTemplate']['meta'] = [];
 		foreach($this->input->post() as $key => $value)
 		{
 			if(substr($key,0,5) == 'meta_')
-				$config['DkTemplate']['meta'][$key] = $value;
+				$config['DkTemplate']['meta'][substr($key,5)] = $value;
 		}
 
 		// Try to save settings
@@ -343,7 +392,9 @@ class DkTemplate extends Process {
 	public function generateTemplates() {
 		$config = $this->modules->getConfig('DkCore');
 		// Generate Hash
-		$hash = md5(json_encode($config));
+		$tempConfig = $config;
+		$tempConfig['DkTemplate']['template']['hash'] = '';
+		$hash = md5(json_encode($tempConfig));
 		$config['DkTemplate']['template']['hash'] = $hash;
 
 
@@ -363,8 +414,12 @@ class DkTemplate extends Process {
 			// Login Check
 			$head = "<?php \n";
 			$head .= "// Login Check \n";
-			$head .= 'if(in_array($page->template->id,DK_Config[\'DkTemplate\'][\'login\'][\'lockedTemplates\'])) {'."\n";
+			$head .= 'if(in_array($page->template->id,DK_Config[\'DkTemplate\'][\'login\'][\'lockedTemplates\']) && !$user->isLoggedIn()) {'."\n";
+			$head .= "    if(is_file(\$config->paths->templates.DK_Config['DkTempalte']['login']['loginTemplate'])){\n";
 			$head .= "    wireIncludeFile(\$config->paths->templates.DK_Config['DkTempalte']['login']['loginTemplate']);\n";
+			$head .= "    }else {\n";
+			$head .= "    header(\"Location: \".\$pages->get(\$config->adminRootPageID)->url);\n";
+			$head .= "    }\n";
 			$head .= "    exit;\n";
 			$head .= "} \n";
 			$head .= "?> \n";
@@ -385,6 +440,17 @@ class DkTemplate extends Process {
 			$generatedTitle = str_replace('{{project-name}}','<?=DK_Config[\'Global\'][\'project-title\'];?>',$generatedTitle);
 			$generatedTitle = str_replace('{{page-name}}','<?=$page->title;?>',$generatedTitle);
 			$head .= '    <title>'.$generatedTitle."</title>\n";
+
+			// Add active Packages
+			foreach($config['DkTemplate']['available_packages'] as $key => $package) {
+				if(in_array($key,$config['DkTemplate']['active_packages'])) {
+					$head .= "    \n    <!-- ".$package['title']." -->\n";
+					foreach($package['css'] as $cssFile)
+						$head .= "    <link rel=\"stylesheet\" href=\"".$this->config->urls->DkTemplate.'packages/'.$key.'/'.$cssFile."\"/>\n";
+					foreach($package['js'] as $jsFile)
+						$head .= "    <script src=\"".$this->config->urls->DkTemplate.'packages/'.$key.'/'.$jsFile."\"/></script>\n";
+				}
+			}
 
 			$head .= "    \n    <!-- Global Styles -->\n";
 			// Add Stylesheets
@@ -497,7 +563,7 @@ class DkTemplate extends Process {
 			mkdir($path,0755,true);
 
 		// Delete all .css files in cache folder
-		$css_files = glob($path.'.min.js'); // get all file names
+		$css_files = glob($path.'*.min.js'); // get all file names
 		foreach($css_files as $file){ // iterate files
 			if(is_file($file))
 				unlink($file); // delete file
@@ -530,12 +596,25 @@ class DkTemplate extends Process {
 
 	/* Add header to template */
 	public function pageRender($event = null) {
-		$config = $this->modules->getConfig('DkCore');
-		$tempaltePaths = $config['DkTemplate']['template']['cachePath'].$config['DkTemplate']['template']['hash'];
-
 		// Print Head & Foot template, if not admin
 		if($this->page->template != 'admin') {
-			$newReturn = $this->files->render($tempaltePaths.'_head.php',['page' => $this->page]);
+			$newReturn = "";
+			if($this->user->isLoggedIn() && $this->config->debug){
+				$newReturn .= '<div style="position: fixed; top: 5px; right: 5px; padding: 15px; background-color: #F44;opacity: 0.75;color: #FFF;">Debug Mode!</div>';
+				$this->generateTemplates();
+			}
+			if($config['DkTemplate']['template']['checkEveryVisit']){
+				$tempConfig = $config;
+				$tempConfig['DkTemplate']['template']['hash'] = '';
+				$hash = md5(json_encode($tempConfig));
+				if($config['DkTemplate']['template']['hash'] == $hash)
+				$this->generateTemplates();
+			}
+
+			$config = $this->modules->getConfig('DkCore');
+			$tempaltePaths = $config['DkTemplate']['template']['cachePath'].$config['DkTemplate']['template']['hash'];
+	
+			$newReturn .= $this->files->render($tempaltePaths.'_head.php',['page' => $this->page]);
 			$newReturn .= $event->return;
 			$newReturn .= $this->files->render($tempaltePaths.'_foot.php',['page' => $this->page]);
 			$event->return = $newReturn;
