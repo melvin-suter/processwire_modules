@@ -42,16 +42,18 @@ class DkNavbar extends Process {
             $newField = new Field;
             $newField->type = $this->modules->get("FieldtypeCheckbox");
             $newField->name = 'inMenu';
+            $newField->global = true;
             $newField->label = 'Show in Menu';
             $newField->save(); // save the field
+        }
 
-            // Add Field to all Templates
-            foreach($this->templates as $template) {
-                if(!in_array($template->id,[2,3,4,5])) {
-                    $template->fields->add("inMenu");
-                    $template->fields->save();
-                }
-            }
+        // Create Divider Template
+        if($this->templates->get('menuDivider') != null)
+        {
+            $newTemplate = new Template;
+            $newTemplate->name = 'menuDivider';
+            $newTemplate->add($this->fields->get('title'));
+            $newTemplate->save(); // save the template
         }
     }
 
@@ -102,6 +104,15 @@ class DkNavbar extends Process {
         
         // Add Text Field
 		$inputField = $this->modules->get('InputfieldDKEditor');
+		$inputField->label = "Item Divider Template";
+		$inputField->name = "itemDividerTemplate";
+		$inputField->language = "php";
+		$inputField->height = "150px";
+		$inputField->value = $config['DkNavbar']['itemDividerTemplate'];
+		$form->add($inputField);
+        
+        // Add Text Field
+		$inputField = $this->modules->get('InputfieldDKEditor');
 		$inputField->label = "Parent Item Template";
 		$inputField->name = "parentTemplate";
 		$inputField->language = "php";
@@ -116,6 +127,15 @@ class DkNavbar extends Process {
 		$inputField->language = "php";
 		$inputField->height = "150px";
 		$inputField->value = $config['DkNavbar']['childTemplate'];
+		$form->add($inputField);
+        
+        // Add Text Field
+		$inputField = $this->modules->get('InputfieldDKEditor');
+		$inputField->label = "Child Divider Template";
+		$inputField->name = "childDividerTemplate";
+		$inputField->language = "php";
+		$inputField->height = "150px";
+		$inputField->value = $config['DkNavbar']['childDividerTemplate'];
 		$form->add($inputField);
         
         // Add Text Field
@@ -157,7 +177,9 @@ class DkNavbar extends Process {
         $config['DkNavbar']['activeClass'] = $this->input->post('activeClass');
         $config['DkNavbar']['openClass'] = $this->input->post('openClass');
         $config['DkNavbar']['itemTemplate'] = $this->input->post('itemTemplate');
+        $config['DkNavbar']['itemDividerTemplate'] = $this->input->post('itemDividerTemplate');
         $config['DkNavbar']['childTemplate'] = $this->input->post('childTemplate');
+        $config['DkNavbar']['childDividerTemplate'] = $this->input->post('childDividerTemplate');
         $config['DkNavbar']['parentTemplate'] = $this->input->post('parentTemplate');
         $config['DkNavbar']['containerTemplate'] = $this->input->post('containerTemplate');
         
@@ -175,38 +197,68 @@ class DkNavbar extends Process {
 		$this->session->redirect('./');
     }
 
+    public function replaceAttributes($string,$item){
+		$config = $this->modules->getConfig('DkCore');
+
+        $string = str_replace('{{TITLE}}',$item->title,$string);
+        $string = str_replace('{{ID}}',$item->id,$string);
+        $string = str_replace('{{URL}}',$item->url,$string);
+        $string = str_replace('{{ACTIVE}}','<?= $input->url(false) == "'.$item->url().'" ? "'.$config['DkNavbar']['activeClass'].'" : "";?>',$string);
+        $string = str_replace('{{TITLE}}',$item->title,$string);
+        $string = str_replace('{{OPEN_TRUE}}','substr($input->url(false),0,'.strlen($item->url).') == "'.$item->url.'"',$string);
+        $string = str_replace('{{OPEN}}','<?= substr($input->url(false),0,'.strlen($item->url).') == "'.$item->url.'" ? "'.$config['DkNavbar']['openClass'].'" : "";?>',$string);
+        return $string;
+    }
+
+    public function checkAllChildren($item) {
+		$config = $this->modules->getConfig('DkCore');
+
+        $string = "";
+        foreach($item->children as $child) {
+            if($child->inMenu == 1) {
+                $childString = $child->template->name == 'menuDivider' ? $config['DkNavbar']['childDividerTemplate'] : $config['DkNavbar']['childTemplate'];
+                $childString = $this->replaceAttributes($childString,$child);
+                $string .= $childString;
+            } elseif($item->children('inMenu=1')->count) { // check if chil has children with inMenu
+                $string .= $this->checkAllChildren($child);
+            }
+        }
+        return $string;
+    }
+
+    public function checkAllParent($item){
+		$config = $this->modules->getConfig('DkCore');
+
+        $string = "";
+        // Page is in Menu
+        if($item->inMenu == 1){
+            if($item->children('inMenu=1')->count > 0 && $item->id != 1){
+                $parentString = $config['DkNavbar']['parentTemplate'];
+                $parentString = $this->replaceAttributes($parentString,$item);
+                $parentString = str_replace('{{CHILDREN}}',$this->checkAllChildren($item),$parentString);
+                $string .= $parentString;
+            }else {
+                $parentString = $item->template->name == 'menuDivider' ? $config['DkNavbar']['itemDividerTemplate'] : $config['DkNavbar']['itemTemplate'];
+                $parentString = $this->replaceAttributes($parentString,$item);
+                $string .= $parentString;
+            }
+        } elseif($item->children('inMenu=1')->count) { // check if chil has children with inMenu
+            // Check all children-recursive
+            foreach($item->children as $child){
+                $string .= $this->checkAllParent($child);
+            }
+        }
+        return $string;
+    }
+
     public function ___generateNavbar() {
 		$config = $this->modules->getConfig('DkCore');
         $navbarContent = "";
-        foreach($this->pages->find('(id=1),(parent=/),inMenu=1,'.$config['DkNavbar']['selector']) as $parentItem){
-            $children = $parentItem->find('inMenu=1,'.$config['DkNavbar']['selector']);
-            if($children->count() > 0 && $parentItem->id > 1) {
-                $childrenString = "";
-                foreach($children as $item) {
-                    $itemString = $config['DkNavbar']['childTemplate'];
-                    $itemString = str_replace('{{TITLE}}',$item->title,$itemString);
-                    $itemString = str_replace('{{URL}}',$item->url(),$itemString);
-                    $itemString = str_replace('{{ID}}',$item->id,$itemString);
-                    $itemString = str_replace('{{ACTIVE}}','<?= $input->url(false) == "'.$item->url().'" ? "'.$config['DkNavbar']['activeClass'].'" : "";?>',$itemString);
-                    $childrenString .= $itemString;
-                }
-                $parentString = $config['DkNavbar']['parentTemplate'];
-                $parentString = str_replace('{{TITLE}}',$parentItem->title,$parentString);
-                $parentString = str_replace('{{CHILDREN}}',$childrenString,$parentString);
-                $parentString = str_replace('{{URL}}',$parentItem->url,$parentString);
-                $parentString = str_replace('{{ID}}',$parentItem->id,$parentString);
-                $parentString = str_replace('{{ACTIVE}}','<?= $input->url(false) == "'.$parentItem->url.'" ? "'.$config['DkNavbar']['activeClass'].'" : "";?>',$parentString);
-                $parentString = str_replace('{{OPEN_TRUE}}','substr($input->url(false),0,'.strlen($parentItem->url).') == "'.$parentItem->url.'"',$parentString);
-                $parentString = str_replace('{{OPEN}}','<?= substr($input->url(false),0,'.strlen($parentItem->url).') == "'.$parentItem->url.'" ? "'.$config['DkNavbar']['openClass'].'" : "";?>',$parentString);
-                $navbarContent .= $parentString;
-            } else {
-                $parentString = $config['DkNavbar']['itemTemplate'];
-                $parentString = str_replace('{{TITLE}}',$parentItem->title,$parentString);
-                $parentString = str_replace('{{URL}}',$parentItem->url,$parentString);
-                $parentString = str_replace('{{ID}}',$parentItem->id,$parentString);
-                $parentString = str_replace('{{ACTIVE}}','<?= $input->url(false) == "'.$parentItem->url.'" ? "'.$config['DkNavbar']['activeClass'].'" : "";?>',$parentString);
-                $navbarContent .= $parentString;
-            }
+        
+        // Get All Pages in tree with parent home and page home
+        foreach($this->pages->find('(id=1),(parent=/),'.$config['DkNavbar']['selector']) as $parentItem){
+
+            $navbarContent .= $this->checkAllParent($parentItem);
         }
 
         $markup = $config['DkNavbar']['containerTemplate'];
@@ -226,13 +278,13 @@ class DkNavbar extends Process {
     }
 
     public function templateSave($event = Null){
-        // Add Field to all Templates (except repeater_)
+        /*// Add Field to all Templates (except repeater_)
         foreach($this->templates as $template) {
             if(!$template->hasField('inMenu') && !in_array($template->id,[2,3,4,5]) && substr($template->title,0,9) != 'repeater_') {
                 $template->fields->add("inMenu");
                 $template->fields->save();
             }
-        }
+        }*/
     }
 
     public function pageSave(){

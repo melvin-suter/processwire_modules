@@ -67,16 +67,19 @@ class DkConfig extends Process {
             'custom_actions' => [],
         ],
         'DkNavbar' => [
-            'selector' => 'sort=title',
+            'selector' => 'sort=sort',
             'activeClass' => 'active',
             'openClass' => 'open',
             'itemTemplate' => '<a class="{{ACTIVE}}" href="{{URL}}">{{TITLE}}</a>',
             'parentTemplate' => '<a href="{{URL}}">{{TITLE}}</a><div>{{CHILDREN}}</div>',
+            'itemDividerTemplate' => '',
             'childTemplate' => '<a class="{{ACTIVE}}" href="{{URL}}">{{TITLE}}</a>',
+            'childDividerTemplate' => '',
             'containerTemplate' => '<div>{{ITEMS}}</div>',
             'navbarPath' => 'include/navbar.php',
         ],
         'DkMultidomain' => [
+            'mainDomain' => '',
             'assignement' => [],
         ],
     ];
