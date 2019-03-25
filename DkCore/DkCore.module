@@ -14,7 +14,7 @@ class DkCore extends WireData implements Module,ConfigurableModule {
 			'singular' => true, 
 			'autoload' => true,
 			'icon' => 'kiwi-bird', 
-			'installs' => array("InputfieldDKEditor",'DkTemplateEditor',"DkTemplate",'DkForms','DkNavbar','DkConfig'),
+			'installs' => array("InputfieldDKEditor",'DkTemplateEditor',"DkTemplate",'DkForms','DkNavbar','DkConfig','DkMultidomain'),
         );
 	}
 	

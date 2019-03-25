@@ -1,5 +1,10 @@
 <?php namespace ProcessWire;
 
+// Include JSMinifier
+require __DIR__.'/vendor/JShrink/Minifier.php';
+// Include scssphp 
+require __DIR__.'/vendor/scssphp/scss.inc.php';
+
 class DkTemplate extends Process {
 
 	/********* 
@@ -529,8 +534,7 @@ class DkTemplate extends Process {
 	public function compileSASS() {
 		$config = $this->modules->getConfig('DkCore');
 
-		// Include scssphp & create Compiler
-		require __DIR__.'/vendor/scssphp/scss.inc.php';
+		// create Compiler
 		$scss = new \Leafo\ScssPhp\Compiler();
 		
 		// Create Folder if not existing
@@ -579,9 +583,6 @@ class DkTemplate extends Process {
 	// Compile JS
 	public function compileJS() {
 		$config = $this->modules->getConfig('DkCore');
-
-		// Include scssphp & create Compiler
-		require __DIR__.'/vendor/JShrink/Minifier.php';
 		
 		// Create Folder if not existing
 		$path = $this->config->paths->templates.$config['DkTemplate']['js']['outputPath'];
