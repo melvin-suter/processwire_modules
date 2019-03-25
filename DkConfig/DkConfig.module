@@ -11,7 +11,7 @@ class DkConfig extends Process {
             'available_packages' => [
                 'bootstrap' => [
                     'package' => 'bootstrap',
-                    'js' => ['js/bootstrap.min.js'],
+                    'js' => ['js/jquery.slim.min.js','js/popper.min.js','js/bootstrap.min.js'],
                     'css' => ['css/bootstrap.min.css'],
                     'title' => 'Bootstrap 4',
                     'version' => 'v4.3.1',
@@ -64,6 +64,7 @@ class DkConfig extends Process {
             'createChildren_templates' => [],
             'save_templates' => [],
             'delete_templates' => [],
+            'custom_actions' => [],
         ],
         'DkNavbar' => [
             'selector' => 'sort=title',
@@ -71,8 +72,12 @@ class DkConfig extends Process {
             'openClass' => 'open',
             'itemTemplate' => '<a class="{{ACTIVE}}" href="{{URL}}">{{TITLE}}</a>',
             'parentTemplate' => '<a href="{{URL}}">{{TITLE}}</a><div>{{CHILDREN}}</div>',
+            'childTemplate' => '<a class="{{ACTIVE}}" href="{{URL}}">{{TITLE}}</a>',
             'containerTemplate' => '<div>{{ITEMS}}</div>',
             'navbarPath' => 'include/navbar.php',
+        ],
+        'DkMultidomain' => [
+            'assignement' => [],
         ],
     ];
 
@@ -114,7 +119,7 @@ class DkConfig extends Process {
 		$config = is_array($config) ? $config : [];
 		$config = array_merge(self::$defaults,$config);
 		$config['DkTemplate']['available_packages'] = is_array($config['DkTemplate']['available_packages']) ? $config['DkTemplate']['available_packages'] : [];
-		$config['DkTemplate']['available_packages'] = array_merge(self::$defaults['DkTemplate']['available_packages'],$config['DkTemplate']['available_packages']);
+		$config['DkTemplate']['available_packages'] = array_merge($config['DkTemplate']['available_packages'],self::$defaults['DkTemplate']['available_packages']);
 		$this->modules->saveConfig('DkCore',$config);
     }
 

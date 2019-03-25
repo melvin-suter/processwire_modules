@@ -197,7 +197,7 @@ class DkTemplate extends Process {
 		$inputField = $this->modules->get('InputfieldTextarea');
 		$inputField->label = "Links";
 		$inputField->name = "styles";
-		$inputField->value = implode('\n',$config['DkTemplate']['sass']['files']);
+		$inputField->value = implode("\n",$config['DkTemplate']['sass']['files']);
 		$markupField->value .= $inputField->render();
 		$fieldset->add($markupField);
 
@@ -228,7 +228,7 @@ class DkTemplate extends Process {
 		$inputField = $this->modules->get('InputfieldTextarea');
 		$inputField->label = "Links";
 		$inputField->name = "scripts";
-		$inputField->value = implode('\n',$config['DkTemplate']['js']['files']);
+		$inputField->value = implode("\n",$config['DkTemplate']['js']['files']);
 		$markupField->value .= $inputField->render();
 		$fieldset->add($markupField);
 
@@ -339,11 +339,11 @@ class DkTemplate extends Process {
 		// Set Config from Input
 		$config['DkTemplate']['login']['lockedTemplates'] = is_array($this->input->post('login-templates')) ? $this->input->post('login-templates') : [];
 		$config['DkTemplate']['login']['loginTemplate'] = $this->input->post('loginTemplate');
-		$config['DkTemplate']['js']['files'] = explode("\\n",$this->input->post('scripts'));
+		$config['DkTemplate']['js']['files'] = explode("\n",str_replace("\r","",$this->input->post('scripts')));
 		$config['DkTemplate']['js']['customTemplates'] = is_array($this->input->post('js-templates')) ? $this->input->post('js-templates') : [];;
 		$config['DkTemplate']['js']['outputPath'] = $this->input->post('jsOutputPath');
 		$config['DkTemplate']['js']['customPath'] = $this->input->post('jsCustomPath');
-		$config['DkTemplate']['sass']['files'] = explode("\\n",$this->input->post('styles'));
+		$config['DkTemplate']['sass']['files'] = explode("\n",str_replace("\r","",$this->input->post('styles')));
 		$config['DkTemplate']['sass']['customTemplates'] = is_array($this->input->post('sass-templates')) ? $this->input->post('sass-templates') : [];;;
 		$config['DkTemplate']['sass']['outputPath'] = $this->input->post('outputPath');
 		$config['DkTemplate']['sass']['customPath'] = $this->input->post('customPath');
@@ -414,14 +414,10 @@ class DkTemplate extends Process {
 			// Login Check
 			$head = "<?php \n";
 			$head .= "// Login Check \n";
+			$head .= "\$isOnLogin=false; \n";
 			$head .= 'if(in_array($page->template->id,DK_Config[\'DkTemplate\'][\'login\'][\'lockedTemplates\']) && !$user->isLoggedIn()) {'."\n";
-			$head .= "    if(is_file(\$config->paths->templates.DK_Config['DkTempalte']['login']['loginTemplate'])){\n";
-			$head .= "    wireIncludeFile(\$config->paths->templates.DK_Config['DkTempalte']['login']['loginTemplate']);\n";
-			$head .= "    }else {\n";
-			$head .= "    header(\"Location: \".\$pages->get(\$config->adminRootPageID)->url);\n";
-			$head .= "    }\n";
-			$head .= "    exit;\n";
-			$head .= "} \n";
+			$head .= "    \$isOnLogin=true;";
+			$head .= "}\n";
 			$head .= "?> \n";
 
 			// HTML
@@ -446,9 +442,9 @@ class DkTemplate extends Process {
 				if(in_array($key,$config['DkTemplate']['active_packages'])) {
 					$head .= "    \n    <!-- ".$package['title']." -->\n";
 					foreach($package['css'] as $cssFile)
-						$head .= "    <link rel=\"stylesheet\" href=\"".$this->config->urls->DkTemplate.'packages/'.$key.'/'.$cssFile."\"/>\n";
+						$head .= "    <link rel=\"stylesheet\" href=\"".$this->config->urls->DkTemplate.'packages/'.$package['package'].'/'.$cssFile."\"/>\n";
 					foreach($package['js'] as $jsFile)
-						$head .= "    <script src=\"".$this->config->urls->DkTemplate.'packages/'.$key.'/'.$jsFile."\"/></script>\n";
+						$head .= "    <script src=\"".$this->config->urls->DkTemplate.'packages/'.$package['package'].'/'.$jsFile."\"/></script>\n";
 				}
 			}
 
@@ -463,6 +459,12 @@ class DkTemplate extends Process {
 			$cssFileUrl = '\'.$config->urls->templates.\''. $config['DkTemplate']['sass']['outputPath'] . $config['DkTemplate']['template']['hash'].'_\'.$page->template->name.\'.css';
 			$cssFilePath = '\'.$config->paths->templates.\''. $config['DkTemplate']['sass']['outputPath'] . $config['DkTemplate']['template']['hash'].'_\'.$page->template->name.\'.css';
 			$head .= "    <?= is_file('$cssFilePath') ? '<link rel=\"stylesheet\" href=\"$cssFileUrl\"/>' : '';?>\n";
+		
+			$head .= "    \n    <!-- Page Style -->\n";
+			// Add Page-Stylesheet if exists
+			$cssFileUrl = '\'.$config->urls->templates.\''. $config['DkTemplate']['sass']['outputPath'] . $config['DkTemplate']['template']['hash'].'_login.css';
+			$cssFilePath = '\'.$config->paths->templates.\''. $config['DkTemplate']['sass']['outputPath'] . $config['DkTemplate']['template']['hash'].'_login.css';
+			$head .= "    <?= is_file('$cssFilePath') && \$isOnLogin ? '<link rel=\"stylesheet\" href=\"$cssFileUrl\"/>' : '';?>\n";
 
 			$head .= "    \n    <!-- Global Scripts -->\n";
 			// Add JS
@@ -475,8 +477,22 @@ class DkTemplate extends Process {
 			$jsFileUrl = '\'.$config->urls->templates.\''. $config['DkTemplate']['js']['outputPath'] . $config['DkTemplate']['template']['hash'].'_\'.$page->template->name.\'.min.js';
 			$jsFilePath = '\'.$config->paths->templates.\''. $config['DkTemplate']['js']['outputPath'] . $config['DkTemplate']['template']['hash'].'_\'.$page->template->name.\'.min.js';
 			$head .= "    <?= is_file('$jsFilePath') ? '<script src=\"$jsFileUrl\"/></script>\n' : '';?>\n";
+			
+			// Add Page-Stylesheet if exists
+			$jsFileUrl = '\'.$config->urls->templates.\''. $config['DkTemplate']['js']['outputPath'] . $config['DkTemplate']['template']['hash'].'_login.min.js';
+			$jsFilePath = '\'.$config->paths->templates.\''. $config['DkTemplate']['js']['outputPath'] . $config['DkTemplate']['template']['hash'].'_login.min.js';
+			$head .= "    <?= is_file('$jsFilePath') && \$isOnLogin ? '<script src=\"$jsFileUrl\"/></script>\n' : '';?>\n";
 
 			$head .= "  </head>\n  <body>\n";
+			$head .= "<?php \n";
+			$head .= 'if($isOnLogin) {'."\n";
+			$head .= "    if(is_file(\$config->paths->templates.DK_Config['DkTemplate']['login']['loginTemplate'])){\n";
+			$head .= "    	include(\$config->paths->templates.DK_Config['DkTemplate']['login']['loginTemplate']);\n";
+			$head .= "    }else {\n";
+			$head .= "    	header(\"Location: \".\$pages->get(\$config->adminRootPageID)->url);\n";
+			$head .= "    }\n";
+			$head .= "    exit;\n";
+			$head .= "} ?>\n";
 			$head .= '    '.implode("\n    ",explode("\n",$config['DkTemplate']['template']['customHead']));
 
 			/*** 
@@ -515,7 +531,7 @@ class DkTemplate extends Process {
 
 		// Include scssphp & create Compiler
 		require __DIR__.'/vendor/scssphp/scss.inc.php';
-		$scss = new \Leafo\ScssPhp\Compiler();	
+		$scss = new \Leafo\ScssPhp\Compiler();
 		
 		// Create Folder if not existing
 		$path = $this->config->paths->templates.$config['DkTemplate']['sass']['outputPath'];
@@ -533,6 +549,7 @@ class DkTemplate extends Process {
 		foreach($config['DkTemplate']['sass']['files'] as $sassFile){
 			$sassPath = $this->config->paths->templates.$sassFile;
 			if(is_file($sassPath)) {
+				$scss->setImportPaths(dirname($sassPath));
 				$sassContent = file_get_contents($sassPath);
 				file_put_contents($path.$config['DkTemplate']['template']['hash'].'_'.pathinfo($sassPath)['filename'].'.css',$scss->compile($sassContent));
 			}
@@ -547,6 +564,15 @@ class DkTemplate extends Process {
 				$sassContent = file_get_contents($sassPath);
 				file_put_contents($path.$config['DkTemplate']['template']['hash'].'_'.pathinfo($sassPath)['filename'].'.css',$scss->compile($sassContent));
 			}
+		}
+
+		// Generating Login SASS
+		$templateName = 'login';
+		$sassPath = $this->config->paths->templates.$config['DkTemplate']['sass']['customPath'].$templateName.'.scss';
+
+		if(is_file($sassPath)) {
+			$sassContent = file_get_contents($sassPath);
+			file_put_contents($path.$config['DkTemplate']['template']['hash'].'_'.pathinfo($sassPath)['filename'].'.css',$scss->compile($sassContent));
 		}
 	}
 
@@ -578,7 +604,7 @@ class DkTemplate extends Process {
 			}
 		}
 
-		// Generate all Page SASS Files
+		// Generate all Page JS Files
 		foreach($config['DkTemplate']['js']['customTemplates'] as $templateID){
 			$templateName = $this->templates->get($templateID)->name;
 			$jsPath = $this->config->paths->templates.$config['DkTemplate']['js']['customPath'].$templateName.'.js';
@@ -588,6 +614,15 @@ class DkTemplate extends Process {
 				file_put_contents($path.$config['DkTemplate']['template']['hash'].'_'.pathinfo($jsPath)['filename'].'.min.js',$minJsContent);
 			}
 		}
+
+		// Generating Loign JS
+		$templateName = 'login';
+		$jsPath = $this->config->paths->templates.$config['DkTemplate']['js']['customPath'].$templateName.'.js';
+
+		if(is_file($jsPath)) {
+			$minJsContent = \JShrink\Minifier::minify(file_get_contents($jsPath));
+			file_put_contents($path.$config['DkTemplate']['template']['hash'].'_'.pathinfo($jsPath)['filename'].'.min.js',$minJsContent);
+		}
 	}
 
 	/********* 
@@ -596,11 +631,11 @@ class DkTemplate extends Process {
 
 	/* Add header to template */
 	public function pageRender($event = null) {
+		$config = $this->modules->getConfig('DkCore');
 		// Print Head & Foot template, if not admin
 		if($this->page->template != 'admin') {
 			$newReturn = "";
 			if($this->user->isLoggedIn() && $this->config->debug){
-				$newReturn .= '<div style="position: fixed; top: 5px; right: 5px; padding: 15px; background-color: #F44;opacity: 0.75;color: #FFF;">Debug Mode!</div>';
 				$this->generateTemplates();
 			}
 			if($config['DkTemplate']['template']['checkEveryVisit']){
@@ -615,6 +650,9 @@ class DkTemplate extends Process {
 			$tempaltePaths = $config['DkTemplate']['template']['cachePath'].$config['DkTemplate']['template']['hash'];
 	
 			$newReturn .= $this->files->render($tempaltePaths.'_head.php',['page' => $this->page]);
+			if($this->user->isLoggedIn() && $this->config->debug){
+				$newReturn .= '<div style="position: fixed; top: 5px; right: 5px; padding: 15px; background-color: #F44;opacity: 0.75;color: #FFF;z-index: 999;">Debug Mode!</div>';
+			}
 			$newReturn .= $event->return;
 			$newReturn .= $this->files->render($tempaltePaths.'_foot.php',['page' => $this->page]);
 			$event->return = $newReturn;

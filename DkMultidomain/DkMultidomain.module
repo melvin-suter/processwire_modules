@@ -1,0 +1,122 @@
+<?php namespace ProcessWire;
+
+class DkMultidomain extends Process {
+
+	static protected $defaults = [];
+
+	public static function getModuleInfo() {
+		return array(
+			'title' => 'DkMultidomain', 
+			'version' => 1, 
+			'summary' => 'DK - Multidomain Redirect',
+            'icon' => 'kiwi-bird', 
+            'autoload' => true,
+			'requires' => ['InputfieldDKEditor','DkCore'],
+        );
+	}
+	public function __construct() {
+        $this->setArray(self::$defaults);
+    }
+
+	public function init() {
+        // Add Hooks
+		$this->addHookBefore('Page::render', $this, 'redirectMultidomain');
+    }
+    
+    public function ___install() {
+        $newPageGroup = $this->pages->get($this->config->urls->admin.'dk/');
+
+        // Create Navbar Page
+        $newPage = new Page;
+        $newPage->parent = $newPageGroup;
+        $newPage->template = 'admin';
+        $newPage->title = 'Multidomain';
+        $newPage->name = 'multidomain';
+        $newPage->process = 'DkMultidomain';
+        $newPage->save();
+    }
+
+    public function ___execute() {
+        $config = $this->modules->getConfig('DkCore');
+
+		// Create Page and Form
+        $page = $this->modules->get('InputfieldFieldset');
+		$form = $this->modules->get('InputfieldForm');
+        $form->action = './save';
+
+		$inputField = $this->modules->get('InputfieldText');
+		$inputField->label = "Main Domain";
+		$inputField->name = "mainDomain";
+		$inputField->language = "php";
+		$inputField->height = "450px";
+		$inputField->value = $config['DkMultidomain']['mainDomain'];
+		$form->add($inputField);
+        
+
+        // Add Text Field
+        $assignementString = "";
+        foreach($config['DkMultidomain']['assignement'] as $key => $value)
+            $assignementString .= "$key => $value\n";
+
+		$inputField = $this->modules->get('InputfieldDKEditor');
+		$inputField->label = "Assignement (Domain => Page-ID)";
+		$inputField->name = "assignement";
+		$inputField->language = "php";
+		$inputField->height = "450px";
+		$inputField->value = $assignementString;
+		$form->add($inputField);
+
+    	// Add Save Button
+		$button = $this->modules->get('InputfieldSubmit');
+		$button->value = 'Save';
+		$button->icon = 'floppy-o';
+		$form->add($button);
+
+		// Add Form to Page and render
+		$page->add($form);
+		return $page->render();
+    }
+
+    public function ___executeSave() {
+        // Throws Exception if it isn't a submited form
+		if(!$this->input->post('submit')) throw new Wire404Exception();
+
+		// Get Config
+		$config = $this->modules->getConfig('DkCore');
+
+		// Set Config from Input
+        $assignementArray = [];
+        foreach(explode("\n",$this->input->post('assignement')) as $row) {
+            $parts = array_map('trim', explode('=>', $row));
+            $assignementArray[$parts[0]] = $parts[1];
+        }
+        $config['DkMultidomain']['assignement'] = $assignementArray;
+        $config['DkMultidomain']['mainDomain'] = $this->input->post('mainDomain');
+        
+		// Try to save settings
+		if($this->modules->saveConfig('DkCore',$config)){
+            $this->message('Saved');
+        }
+		else
+			$this->message('Error While Saving!');
+
+		// redirect to the previous page
+		$this->session->redirect('./');
+    }
+
+    public function redirectMultidomain($event = null) {
+        $config = $this->modules->getConfig('DkCore');
+
+        if($this->config->httpHost != $config['DkMultidomain']['mainDomain']){
+            if(isset($config['DkMultidomain']['assignement'][$this->config->httpHost])) {
+                $url = $this->pages->get($config['DkMultidomain']['assignement'][$this->config->httpHost])->httpUrl;
+                $url .= substr($_SERVER['REQUEST_URI'],1);
+                $url = str_replace($this->config->httpHost,$config['DkMultidomain']['mainDomain'],$url);
+                $this->session->redirect($url);
+                exit;
+            }
+        }
+        
+    }
+    
+}   

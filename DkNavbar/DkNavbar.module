@@ -111,6 +111,15 @@ class DkNavbar extends Process {
         
         // Add Text Field
 		$inputField = $this->modules->get('InputfieldDKEditor');
+		$inputField->label = "Child Template";
+		$inputField->name = "childTemplate";
+		$inputField->language = "php";
+		$inputField->height = "150px";
+		$inputField->value = $config['DkNavbar']['childTemplate'];
+		$form->add($inputField);
+        
+        // Add Text Field
+		$inputField = $this->modules->get('InputfieldDKEditor');
 		$inputField->label = "Container Template";
 		$inputField->name = "containerTemplate";
 		$inputField->language = "php";
@@ -148,6 +157,7 @@ class DkNavbar extends Process {
         $config['DkNavbar']['activeClass'] = $this->input->post('activeClass');
         $config['DkNavbar']['openClass'] = $this->input->post('openClass');
         $config['DkNavbar']['itemTemplate'] = $this->input->post('itemTemplate');
+        $config['DkNavbar']['childTemplate'] = $this->input->post('childTemplate');
         $config['DkNavbar']['parentTemplate'] = $this->input->post('parentTemplate');
         $config['DkNavbar']['containerTemplate'] = $this->input->post('containerTemplate');
         
@@ -155,7 +165,7 @@ class DkNavbar extends Process {
 		if($this->modules->saveConfig('DkCore',$config)){
             $this->message('Saved');
             if($this->input->post('action-generate') != false){
-                $this->generateNavbar();
+                $this->___generateNavbar();
             }
         }
 		else
@@ -165,19 +175,19 @@ class DkNavbar extends Process {
 		$this->session->redirect('./');
     }
 
-    public function generateNavbar() {
+    public function ___generateNavbar() {
 		$config = $this->modules->getConfig('DkCore');
         $navbarContent = "";
-        foreach($this->pages->find('parent=/,inMenu=1,'.$config['DkNavbar']['selector']) as $parentItem){
+        foreach($this->pages->find('(id=1),(parent=/),inMenu=1,'.$config['DkNavbar']['selector']) as $parentItem){
             $children = $parentItem->find('inMenu=1,'.$config['DkNavbar']['selector']);
-            if($children->count() > 0) {
+            if($children->count() > 0 && $parentItem->id > 1) {
                 $childrenString = "";
                 foreach($children as $item) {
-                    $itemString = $config['DkNavbar']['itemTemplate'];
+                    $itemString = $config['DkNavbar']['childTemplate'];
                     $itemString = str_replace('{{TITLE}}',$item->title,$itemString);
-                    $itemString = str_replace('{{URL}}',$item->url,$itemString);
+                    $itemString = str_replace('{{URL}}',$item->url(),$itemString);
                     $itemString = str_replace('{{ID}}',$item->id,$itemString);
-                    $itemString = str_replace('{{ACTIVE}}','<?= $input->url(false) == "'.$item->url.'" ? "'.$config['DkNavbar']['activeClass'].'" : "";?>',$itemString);
+                    $itemString = str_replace('{{ACTIVE}}','<?= $input->url(false) == "'.$item->url().'" ? "'.$config['DkNavbar']['activeClass'].'" : "";?>',$itemString);
                     $childrenString .= $itemString;
                 }
                 $parentString = $config['DkNavbar']['parentTemplate'];
@@ -186,6 +196,7 @@ class DkNavbar extends Process {
                 $parentString = str_replace('{{URL}}',$parentItem->url,$parentString);
                 $parentString = str_replace('{{ID}}',$parentItem->id,$parentString);
                 $parentString = str_replace('{{ACTIVE}}','<?= $input->url(false) == "'.$parentItem->url.'" ? "'.$config['DkNavbar']['activeClass'].'" : "";?>',$parentString);
+                $parentString = str_replace('{{OPEN_TRUE}}','substr($input->url(false),0,'.strlen($parentItem->url).') == "'.$parentItem->url.'"',$parentString);
                 $parentString = str_replace('{{OPEN}}','<?= substr($input->url(false),0,'.strlen($parentItem->url).') == "'.$parentItem->url.'" ? "'.$config['DkNavbar']['openClass'].'" : "";?>',$parentString);
                 $navbarContent .= $parentString;
             } else {
@@ -200,7 +211,6 @@ class DkNavbar extends Process {
 
         $markup = $config['DkNavbar']['containerTemplate'];
         $markup = str_replace('{{ITEMS}}',$navbarContent,$markup);
-        $itemString = str_replace('{{ID}}',$item->id,$itemString);
 
         file_put_contents($this->config->paths->templates.$config['DkNavbar']['navbarPath'],$markup);
 
@@ -211,10 +221,14 @@ class DkNavbar extends Process {
         wireIncludeFile(wire('config')->paths->templates.'include/navbar.php');
     }
 
+    public function show() {
+        self::showNavbar();
+    }
+
     public function templateSave($event = Null){
-        // Add Field to all Templates
+        // Add Field to all Templates (except repeater_)
         foreach($this->templates as $template) {
-            if(!$template->hasField('inMenu') && !in_array($template->id,[2,3,4,5])) {
+            if(!$template->hasField('inMenu') && !in_array($template->id,[2,3,4,5]) && substr($template->title,0,9) != 'repeater_') {
                 $template->fields->add("inMenu");
                 $template->fields->save();
             }
@@ -222,7 +236,7 @@ class DkNavbar extends Process {
     }
 
     public function pageSave(){
-        $this->generateNavbar();
+        $this->___generateNavbar();
     }
 
 }

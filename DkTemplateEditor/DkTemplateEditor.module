@@ -36,46 +36,62 @@ class DkTemplateEditor extends Process {
 
     public function ___execute() {
         if(!$this->input->post('submit')){
-            $config = $this->modules->getConfig('DkCore');
-            
-            $html = '<form action="" method="post">';
-            $html .= '<input type="text" style="width: 100%;margin-bottom: 5px;" name="path" value="'.$this->input->get('path').'"/>';
-            $html .= '<div style="display: flex;margin-bottom: 3px;">';
-
-                $html .= '<div style="width: 70%;">';
-
-                // Add Text Field
-                $inputField = $this->modules->get('InputfieldDKEditor');
-                $inputField->name = "content";
-                $inputField->value = is_file($this->config->paths->templates.$this->input->get('path')) ? file_get_contents($this->config->paths->templates.$this->input->get('path')) : '';
-                $html .= $inputField->render();
-
-                $html .= '</div>';
-
-                $html .= '<div style="width: 30%;padding: 5px;">';
+            if(!$this->input->get('delete'))
+            {
+                $config = $this->modules->getConfig('DkCore');
                 
-                $directory = new \RecursiveDirectoryIterator($this->config->paths->templates);
-                $iterator = new \RecursiveIteratorIterator($directory);
-                $files = array();
-                foreach ($iterator as $info) {
-                    if($info->getFilename() != '.' && $info->getFilename() != '..') {
-                        $relativePath = str_replace($this->config->paths->templates,'',$info->getPathname());
-                        $html .= '<div style="font-size: 75%; border: 1px solid #999;padding: 2px 3px;"><a href="?path='.$relativePath.'">'.$relativePath.'</a></div>';
+                $html = '<form action="" method="post">';
+                $html .= '<input type="text" style="width: 100%;margin-bottom: 5px;" name="path" value="'.$this->input->get('path').'"/>';
+                $html .= '<div style="display: flex;margin-bottom: 3px;">';
+
+                    $html .= '<div style="width: 70%;">';
+
+                    // Add Text Field
+                    $inputField = $this->modules->get('InputfieldDKEditor');
+                    $inputField->name = "content";
+                    $extension = trim(substr($this->input->get('path'),stripos($this->input->get('path'),'.')+1));
+                    $inputField->language = $extension == 'js' ? 'javascript' : $extension; 
+                    $inputField->value = is_file($this->config->paths->templates.$this->input->get('path')) ? file_get_contents($this->config->paths->templates.$this->input->get('path')) : '';
+                    $html .= $inputField->render();
+
+                    $html .= '</div>';
+
+                    $html .= '<div style="width: 30%;padding: 5px;">';
+                    
+                    $directory = new \RecursiveDirectoryIterator($this->config->paths->templates);
+                    $iterator = new \RecursiveIteratorIterator($directory);
+                    $files = array();
+                    foreach ($iterator as $info) {
+                        if($info->getFilename() != '.' && $info->getFilename() != '..' && !strpos($info->getPathname(),$config['DkTemplate']['template']['cachePath']) && !strpos($info->getPathname(),$config['DkTemplate']['sass']['outputPath']) && !strpos($info->getPathname(),$config['DkTemplate']['js']['outputPath'])) {
+                            $relativePath = str_replace($this->config->paths->templates,'',$info->getPathname());
+                            array_push($files,$relativePath);
+                        }
                     }
-                }
+
+                    natsort($files);
+
+                    foreach($files as $file) {
+                        $html .= '<div style="font-size: 75%; border: 1px solid #999;padding: 2px 3px;display: flex;"><a style="flex-grow:1;" href="?path='.$file.'">'.$file.'</a> <a style="" href="?delete='.$file.'">&#128465;</a></div>';
+                    }
+
+                    $html .= '</div>';
 
                 $html .= '</div>';
 
-            $html .= '</div>';
+                // Add Submit Button
+                $button = $this->modules->get('InputfieldSubmit');
+                $button->value = "Save";
+                $html .= $button->render();
+                $html .= '</form>';
 
-            // Add Submit Button
-            $button = $this->modules->get('InputfieldSubmit');
-            $button->value = "Save";
-            $html .= $button->render();
-            $html .= '</form>';
-
-            return $html;
+                return $html;
+            } else {
+                unlink($this->config->paths->templates.$this->input->post('delete'));
+		        $this->session->redirect('./');
+            }
         } else {
+            if(!is_dir(dirname($this->config->paths->templates.$this->input->post('path'))))
+                mkdir(dirname($this->config->paths->templates.$this->input->post('path')));
             file_put_contents($this->config->paths->templates.$this->input->post('path'),$this->input->post('content'));
             $this->message('Saved');
 		    $this->session->redirect('./?path='.$this->input->post('path'));

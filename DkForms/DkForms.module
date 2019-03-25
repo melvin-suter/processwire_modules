@@ -61,7 +61,7 @@ class DkForms extends Process {
 
 		$table = $this->modules->get('MarkupAdminDataTable');
 		$table->setEncodeEntities(false);
-		$table->headerRow(['Template', 'Create','Create Children','Save','Delete']);
+		$table->headerRow(['Template', 'Create','Create Children','Save','Delete','Custom-Action']);
 		foreach($this->templates as $template) {
 			if(!in_array($template->id,[2,3,4,5]))
 				$table->row([
@@ -69,14 +69,30 @@ class DkForms extends Process {
 					'<input type="checkbox" name="create-templates[]" '.(in_array($template->id,$config['DkForms']['create_templates']) ? 'checked' : '').' value="'.$template->id.'"/>',
 					'<input type="checkbox" name="create-children-templates[]" '.(in_array($template->id,$config['DkForms']['createChildren_templates']) ? 'checked' : '').' value="'.$template->id.'"/>',
 					'<input type="checkbox" name="save-templates[]" '.(in_array($template->id,$config['DkForms']['save_templates']) ? 'checked' : '').' value="'.$template->id.'"/>',
-					'<input type="checkbox" name="delete-templates[]" '.(in_array($template->id,$config['DkForms']['delete_templates']) ? 'checked' : '').' value="'.$template->id.'"/>'
+                    '<input type="checkbox" name="delete-templates[]" '.(in_array($template->id,$config['DkForms']['delete_templates']) ? 'checked' : '').' value="'.$template->id.'"/>',
+                    '<input type="checkbox" name="custom-actions[]" '.(in_array($template->id,array_keys($config['DkForms']['custom_actions'])) ? 'checked' : '').' value="'.$template->id.'"/>'
 					]);
 		}
-		$markupField->value .= $table->render();
-
+        $markupField->value .= $table->render();
 		$form->add($markupField);
-
 		// End: Template
+
+        
+        // Add Custom-Action fields
+        if(is_array($config['DkForms']['custom_actions'])){
+            foreach($config['DkForms']['custom_actions'] as $id => $value){
+                $fieldset = $this->modules->get('InputfieldFieldset');
+                $fieldset->label = $this->templates->get($id);
+                $editField = $this->modules->get('InputfieldDKEditor');
+                $editField->label = "Action";
+                $editField->language = "php";
+                $editField->name = 'action_'.$id;
+                $editField->value = $value;
+                $fieldset->add($editField);
+                $form->add($fieldset);
+            }
+        }
+
 
 		// Add Save Button
 		$button = $this->modules->get('InputfieldSubmit');
@@ -101,6 +117,17 @@ class DkForms extends Process {
         $config['DkForms']['createChildren_templates'] = is_array($this->input->post('create-children-templates')) ? $this->input->post('create-children-templates') : [];
         $config['DkForms']['save_templates'] = is_array($this->input->post('save-templates')) ? $this->input->post('save-templates') : [];
         $config['DkForms']['delete_templates'] = is_array($this->input->post('delete-templates')) ? $this->input->post('delete-templates') : [];
+
+        $newCustomActions = [];
+        foreach((is_array($this->input->post('custom-actions')) ? $this->input->post('custom-actions') : []) as $id)
+        {
+            $newCustomActions[$id] = '';
+            if(isset($config['DkForms']['custom_actions'][$id]))
+                $newCustomActions[$id] = $config['DkForms']['custom_actions'][$id];
+            if($this->input->post('action_'.$id) != false)
+                $newCustomActions[$id] = $this->input->post('action_'.$id);
+        }
+        $config['DkForms']['custom_actions'] = $newCustomActions;
         
 		// Try to save settings
 		if($this->modules->saveConfig('DkCore',$config))
@@ -110,6 +137,96 @@ class DkForms extends Process {
 
 		// redirect to the previous page
 		$this->session->redirect('./');
+    }
+
+    public function convertInputToFields($page,$input){
+        // Set Page of
+        $page->of(false);
+        // Assign fields
+        foreach($input->post() as $key => $value)
+        {
+            // Check if key exists
+            if($page->hasField($key)) {
+                // Yes -> Direct assignement
+                if($page->getField($key)->type == 'FieldtypePage'){
+                    if(is_numeric($input->post($key))) {
+                        $page->$key = $this->pages->get($input->post($key));
+                    }
+                } else
+                    $page->$key = $input->post($key,$page->getField($key)->type);
+            } else {
+                // No -> Indirect assignement
+
+                // Get key from key_name
+                $parts = explode('_',$key);
+
+                // Skips step if not in key_name format
+                if(count($parts) < 2)
+                    continue;
+
+                $inKey = $parts[0];
+                $parts = array_slice($parts,1);
+
+                // Check if key exists
+                if($page->hasField($inKey)) {
+
+                    switch($page->getField($inKey)->type){
+                        case 'FieldtypeRepeater':
+                            // Will only do something on _repeater
+                            if($parts[0] == 'repeater') {
+                                // Get All Props
+                                $props = explode(';',$value);
+
+                                // check current repeater-fields and change/delete them
+                                $page->of(false);
+                                foreach($page->$inKey as $repeater) {
+                                    $repeater->of(false);
+                                    // Delete
+                                    if((!$input->post($inKey.'_'.$repeater->id.'_delete') ? 0 : $input->post($inKey.'_'.$repeater->id.'_delete')) == 1) {
+                                        $repeater->delete(true);
+                                    } else {
+                                        foreach($repeater->fields as $field) {
+                                            if($input->post($inKey.'_'.$repeater->id.'_'.$field->name) != false) {
+                                                $f = $field->name;
+                                                $repeater->$f = $input->post($inKey.'_'.$repeater->id.'_'.$field->name);
+                                            }
+                                        }
+                                        $repeater->save(); 
+                                    }
+                                }
+                                $page->save();
+                                $page->of(false);
+
+                                // Loop through all new entries
+                                $inp = $input->post($inKey.'_new_'.$props[0]);
+                                for($i = 0; $i < count(is_array($inp) ? $inp : []); $i++) {
+                                    // Create Repeater
+                                    $repeater = $page->$inKey->getNew();
+                                    $repeater->of(false);
+                                    // loops through all given properties in field_repeater
+                                    foreach($props as $prop)
+                                        $repeater->$prop = $input->post($inKey.'_new_'.$prop)[$i];
+                                    $repeater->save();
+                                    $page->$inKey->add($repeater);
+                                }
+
+
+                            }else {
+                            }
+                            break;
+                    }
+                    
+                    
+
+                    //$page->$key = $this->input->post($key,$page->$key->type);
+                }
+            }
+        }
+        // Set Page Name
+        if($this->input->post('name') != false)
+            $page->name = $this->sanitizer->pageName($this->input->post('name'), true);
+        // Save Page
+        $page->save();
     }
 
     /* Add handler to Template */
@@ -131,17 +248,14 @@ class DkForms extends Process {
                         if(!in_array($this->page->template->id,$config['DkForms']['save_templates']))
                             break;
 
-                        // Set Page of
-                        $this->page->of(false);
-                        // Assign fields
-                        foreach($this->input->post() as $key => $value)
-                        {
-                            if($this->page->hasField($key)) {
-                                $this->page->$key = $this->input->post($key,$this->page->$key->type);
-                            }
+                        $this->convertInputToFields($this->page,$this->input);
+                        if(isset($config['DkForms']['custom_actions'][$this->page->template->id])) {
+                            eval($config['DkForms']['custom_actions'][$this->page->template->id]);
                         }
-                        // Save Page
-                        $this->page->save();
+
+                        // Reset Target URL
+                        $targetURL = !$this->input->post('target-url') ? ($this->input->post('action') == 'delete-page' ? $this->page->parent()->url : $this->page->url) : $this->input->post('target-url'); 
+
                         break;
 
                     case 'delete-page':
@@ -159,15 +273,16 @@ class DkForms extends Process {
                         break;
                         
                     case 'create-page':
+                        $parentPage = !$this->input->post('parent') ? $this->page : (!$this->pages->findOne($this->input->post('parent')) ? $this->page : $this->pages->findOne($this->input->post('parent')));
                         // Check if create children is active on template or if required fields missing or if template has create active
-                        if(!in_array($this->page->template->id,$config['DkForms']['createChildren_templates']) || !$this->input->post('title') || !$this->input->post('template') || !in_array($this->templates->get($this->input->post('template'))->id,$config['DkForms']['create_templates']))
+                        if(!in_array($parentPage->template->id,$config['DkForms']['createChildren_templates']) || !$this->input->post('title') || !$this->input->post('template') || !in_array($this->templates->get($this->input->post('template'))->id,$config['DkForms']['create_templates']))
                             break;
 
                         // Create Page
                         $newPage = new Page;
                         $newPage->template = $this->input->post('template');
                         $newPage->title = $this->input->post('title');
-                        $newPage->parent = $this->page;
+                        $newPage->parent = $parentPage;
                         $newPage->name = !$this->input->post('name') ? $this->sanitizer->pageName($this->input->post('title'), true) : $this->sanitizer->pageName($this->input->post('name'), true);
 
                         // Assign other fields
@@ -180,13 +295,19 @@ class DkForms extends Process {
 
                         // Save Page
                         $newPage->save();
+                        
+                        // Stuff
+                        $this->convertInputToFields($newPage,$this->input);
+                        if(isset($config['DkForms']['custom_actions'][$this->page->template->id])) {
+                            eval($config['DkForms']['custom_actions'][$this->page->template->id]);
+                        }
 
                         // Reassign targetpath to go to new page, if target not set
                         $targetURL = !$this->input->post('target-url') ? $newPage->url : $this->input->post('target-url'); 
 
                         break;
                 }
-                
+
                 header("Location: ".$targetURL);
                 exit;
             }
